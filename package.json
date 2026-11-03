@@ -17,7 +17,9 @@
     "test:e2e": "playwright test",
     "verify:tutor": "tsx scripts/verify-tutor.ts",
     "verify:teaching": "tsx scripts/verify-teaching.ts",
-    "verify:speech": "tsx scripts/verify-speech.ts"
+    "verify:speech": "tsx scripts/verify-speech.ts",
+    "assets:sync": "tsx scripts/sync-mediapipe-assets.ts --sync",
+    "assets:check": "tsx scripts/sync-mediapipe-assets.ts --check"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-11-03",
+  "package": {
+    "name": "@mediapipe/tasks-vision",
+    "version": "1.2.0",
+    "license": "Apache-2.0",
+    "licenseEvidence": "https://registry.npmjs.org/@mediapipe/tasks-vision/1.2.0",
+    "tarball": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz",
+    "integrity": "sha512-7+dr9GbGyTtcuLh11wE5TOn4dNFRncIT9oAWs72620WX99KW5FfzF6rFJ/ChTgXG9vJ6dCiE9FrEEY4CnwPWKQ=="
+  },
+  "model": {
+    "name": "Gesture Recognizer",
+    "variant": "float16",
+    "version": "1",
+    "license": "NOASSERTION",
+    "licenseNote": "Runtime Apache-2.0 declaration is verified. Reviewed official model card and component BUILD do not explicitly grant redistribution of this exact task bundle; see NOTICE.txt.",
+    "guide": "https://developers.google.com/edge/mediapipe/solutions/vision/gesture_recognizer",
+    "modelCard": "https://storage.googleapis.com/mediapipe-assets/gesture_recognizer/model_card_hand_gesture_classification_with_faireness_2022.pdf",
+    "componentEvidence": "https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/model_maker/models/gesture_recognizer/BUILD"
+  },
+  "files": [
+    {
+      "path": "vision_bundle.mjs",
+      "kind": "package",
+      "packagePath": "vision_bundle.mjs",
+      "bytes": 156344,
+      "sha256": "870da5cfc43bfcf2a8b0f14e8152dae8c7e701722e1191b0e592b94b81b4127a",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/vision_bundle.mjs"
+    },
+    {
+      "path": "wasm/vision_wasm_internal.js",
+      "kind": "package",
+      "packagePath": "wasm/vision_wasm_internal.js",
+      "bytes": 334128,
+      "sha256": "85c1a342be70427987f900969a5f26e17557351111364e6585e97fb03e93e108",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/wasm/vision_wasm_internal.js"
+    },
+    {
+      "path": "wasm/vision_wasm_internal.wasm",
+      "kind": "package",
+      "packagePath": "wasm/vision_wasm_internal.wasm",
+      "bytes": 14466654,
+      "sha256": "bcc13df22d3d69ec8cbe8e280989356d844ae00f4523eb82072d2484f44134dc",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/wasm/vision_wasm_internal.wasm"
+    },
+    {
+      "path": "wasm/vision_wasm_module_internal.js",
+      "kind": "package",
+      "packagePath": "wasm/vision_wasm_module_internal.js",
+      "bytes": 334166,
+      "sha256": "60384c9014750321c0fc1d489b3329e5eaed0fcf3c328d404ecb1a6c75e89d17",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/wasm/vision_wasm_module_internal.js"
+    },
+    {
+      "path": "wasm/vision_wasm_module_internal.wasm",
+      "kind": "package",
+      "packagePath": "wasm/vision_wasm_module_internal.wasm",
+      "bytes": 14466676,
+      "sha256": "2e326b9d9584ac22e230c263f47e6fe694a7df1ce22a8546c72df0e5c0fc1066",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/wasm/vision_wasm_module_internal.wasm"
+    },
+    {
+      "path": "wasm/vision_wasm_nosimd_internal.js",
+      "kind": "package",
+      "packagePath": "wasm/vision_wasm_nosimd_internal.js",
+      "bytes": 333931,
+      "sha256": "e9b2b799e0f1078f5538b300a57835b823742c37e2646308a03f0f25b39fdcdc",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/wasm/vision_wasm_nosimd_internal.js"
+    },
+    {
+      "path": "wasm/vision_wasm_nosimd_internal.wasm",
+      "kind": "package",
+      "packagePath": "wasm/vision_wasm_nosimd_internal.wasm",
+      "bytes": 12915401,
+      "sha256": "ed5e5e5812490bd90d6a440290845ff9e4c516f696847a28a0c0e0573470d469",
+      "source": "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-1.2.0.tgz#package/wasm/vision_wasm_nosimd_internal.wasm"
+    },
+    {
+      "path": "gesture_recognizer.task",
+      "kind": "model",
+      "bytes": 8373440,
+      "sha256": "97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482",
+      "source": "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task"
+    },
+    {
+      "path": "LICENSE-APACHE-2.0.txt",
+      "kind": "license",
+      "bytes": 12331,
+      "sha256": "8707eef0533987efc5b155d64761eeb6e20793f50b9bd1a68dad1cf4719d0ed8",
+      "source": "https://raw.githubusercontent.com/google-ai-edge/mediapipe/ce3cd94f457970502adb855fc723d2d13ae47980/LICENSE"
+    }
+  ]
+}

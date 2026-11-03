@@ -12,3 +12,6 @@ test-results/
 playwright-report/
 var/probes/
 .DS_Store
+
+# Fetch pinned model weights locally; keep their manifest and source URL tracked.
+apps/web/public/vendor/mediapipe/gesture_recognizer.task

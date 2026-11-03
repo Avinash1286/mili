@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { CreateSessionSchema, SendMessageSchema, UpdateBoardSchema, SpeechRequestSchema, BoardTransactionSchema, MapUpdateSchema, ExplainImageSchema, applyMapUpdate, emptyConceptMap, type Session, type SelectionContext, type BoardCommand } from '@tokai/contracts';
-import { createLesson, sampleTeachingReply, summarizeSession, generateTutorReply, generateVisionExplanation, validateVisionImage, VisionError, TutorError, type GenerateReply, type TutorReply } from '@tokai/tutor-core';
+import { createLesson, sampleTeachingReply, summarizeSession, generateTutorReply, generateVisionExplanation, validateVisionImage, groundSpatialSelection, VisionError, TutorError, type GenerateReply, type TutorReply } from '@tokai/tutor-core';
 import { synthesizeSpeech } from '@tokai/speech';
 import { ApiError, FileStore } from './store.js';
 import { VoiceManager, type VoiceOptions } from './voice.js';
@@ -90,10 +90,11 @@ export async function createApp(options: AppOptions = {}) {
       if (httpTurns.has(session.id)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current tutor response before sending another message.');
       if (session.messages.length > 198 || (session.teachingBeats?.length ?? 0) > 198) throw new ApiError(429, 'TURN_LIMIT', 'This lesson has reached its message limit. Finish it and start a new lesson.');
       if (input.selectedNodeId && !session.board.nodes.some(node => node.id === input.selectedNodeId)) throw new ApiError(400, 'INVALID_SELECTION', 'The selected board item is no longer available. Select it again.');
+      groundSpatialSelection(input.selection?.spatial);
       httpTurns.set(session.id, controller); return session;
     });
     try {
-      const result = context.mode === 'sample' ? sampleTeachingReply(context, input.text, input.selectedNodeId) : await live(context, input.text, input.selectedNodeId, input.selection, controller.signal);
+      const result = context.mode === 'sample' ? sampleTeachingReply(context, input.text, input.selectedNodeId, input.selection) : await live(context, input.text, input.selectedNodeId, input.selection, controller.signal);
       // Plan against the model's immutable input. A later student board edit causes
       // only the stale visual transaction to fail, never a whole-board overwrite.
       const turnId = `text:${randomUUID()}`, planned = planTeachingBeats(context, result, turnId, 0);

@@ -1,10 +1,11 @@
 import { GoogleGenAI, FunctionCallingConfigMode, type Content, type Part, type FunctionCall } from '@google/genai';
 import { z } from 'zod';
-import { BoardCommandSchema, DiagramSpecSchema, MapUpdateSchema, LessonFocusSchema, TeachingBeatProposalSchema, applyBoardTransaction, applyMapUpdate, emptyConceptMap, layoutDiagram, resolveSelection, pruneMapBoardReferences, type TeachingBeatProposal } from '@tokai/contracts';
+import { BoardCommandSchema, DiagramSpecSchema, MapUpdateSchema, LessonFocusSchema, TeachingBeatProposalSchema, SpatialSelectionSchema, SPATIAL_CATALOG, applyBoardTransaction, applyMapUpdate, emptyConceptMap, layoutDiagram, resolveSelection, pruneMapBoardReferences, type TeachingBeatProposal } from '@tokai/contracts';
 import { TutorError, type GenerateReply, type TutorDiagnostics } from './types.js';
 import { plainTeachingBeat, splitTeachingText, validateTeachingPlan } from './teaching.js';
+import { groundSpatialSelection } from './spatial.js';
 
-const PROMPT_VERSION = 'tokai-teaching-3.2';
+const PROMPT_VERSION = 'tokai-teaching-4.0';
 const expectedRevision = z.number().int().nonnegative().describe('The exact current board.revision from the provided context or most recent tool result.');
 const DrawSchema = z.object({ expectedRevision, diagram: DiagramSpecSchema.describe('Required semantic diagram: id, title, template, nodes and edges. Layout is handled by the application.') }).strict();
 const EditSchema = z.object({ expectedRevision, commands: z.array(BoardCommandSchema).min(1).max(40).describe('Nonempty typed board edits. Supply every required node/edge field; never modify student-authored work.') }).strict();
@@ -16,6 +17,7 @@ const tools = [
   { name: 'highlight_concepts', description: 'Stage highlights for existing board shape IDs, including shapes staged by draw_shapes.', schema: HighlightSchema },
   { name: 'update_mind_map', description: 'Stage a concept-map merge. Preserve student work. Never claim understood without assessment evidence. References must belong to this lesson.', schema: MapUpdateSchema },
   { name: 'set_lesson_focus', description: 'Set the lesson goal, current concept and next teaching step. Does not establish mastery.', schema: LessonFocusSchema },
+  { name: 'show_model', description: 'Stage an approved interactive educational model and highlight canonical part IDs from the supplied catalog. Use only the exact modelId, assetVersion and partIds listed there. This conceptual model is not a photograph or an accurate scale simulation. The model appears only when submitted with a teaching beat.', schema: SpatialSelectionSchema },
   { name: 'submit_teaching_beat', description: 'Submit one short narrated teaching step and its staged visuals. At most two beats per response. Expand math into plain spoken words; retain symbols in displayText. End with one useful question and wait.', schema: SubmitSchema }
 ];
 const declarations = tools.map(tool => ({ name: tool.name, description: tool.description, parametersJsonSchema: z.toJSONSchema(tool.schema, { unrepresentable: 'any' }) }));
@@ -40,7 +42,8 @@ export const generateTutorReply: GenerateReply = async input => {
   if (!input.apiKey || !input.model) throw new TutorError('TUTOR_UNAVAILABLE', 'Live AI is not configured. Set GEMINI_API_KEY and GEMINI_MODEL on the server, or explicitly choose a sample lesson.');
   if (input.signal?.aborted) throw new TutorError('TUTOR_CANCELLED', 'The tutoring request was cancelled.');
   const selection = input.selection ?? (input.selectedNodeId ? { shapeIds: [input.selectedNodeId], conceptIds: [], boardRevision: input.session.board.revision ?? 0 } : undefined);
-  const grounded = resolveSelection(input.session.board, selection);
+  const selectedSpatial = groundSpatialSelection(selection?.spatial);
+  const grounded = resolveSelection(input.session.board, selectedSpatial && !selection?.shapeIds.length ? undefined : selection);
   if (grounded.status === 'stale' || grounded.status === 'ambiguous') return { text: grounded.clarification!, beats: [plainTeachingBeat(grounded.clarification!)], warnings: ['Select one current board object to ground this question.'] };
   const client = new GoogleGenAI({ apiKey: input.apiKey, httpOptions: { timeout: 24000 } });
   const timeout = new AbortController();
@@ -48,7 +51,9 @@ export const generateTutorReply: GenerateReply = async input => {
   const maxCalls = Math.max(1, Math.min(3, input.limits?.maxModelCalls ?? 3));
   const maxRepairs = Math.max(0, Math.min(1, input.limits?.maxRepairAttempts ?? 1));
   const diagnostics: TutorDiagnostics = { modelCalls: 0, toolCalls: 0, tools: [], repairAttempts: 0, textOnlyFallback: false, promptVersion: PROMPT_VERSION, rejectedTools: [] };
+  const spatialCatalog = SPATIAL_CATALOG.map(model => ({ modelId: model.id, assetVersion: model.assetVersion, title: model.title, description: model.description, scaleNote: model.scaleNote, parts: model.parts.map(({ id, label, description, conceptIds }) => ({ id, label, description, conceptIds })) }));
   const contents: Content[] = [{ role: 'user', parts: [{ text: JSON.stringify({ topic: input.session.topic, board: input.session.board, conceptMap: input.session.conceptMap ?? emptyConceptMap(input.session.topic), lessonFocus: input.session.lessonFocus, selectedObjects: grounded.nodes,
+    spatialCatalog, currentSpatialState: input.session.spatialState, selectedModel: selectedSpatial ? { modelId: selectedSpatial.model.id, title: selectedSpatial.model.title, description: selectedSpatial.model.description, scaleNote: selectedSpatial.model.scaleNote, parts: selectedSpatial.parts.map(({ id, label, description, conceptIds }) => ({ id, label, description, conceptIds })) } : undefined,
     recentConversation: input.session.messages.slice(-14).map(({ role, text, delivery, playedMs }) => role === 'tutor' && delivery && delivery !== 'completed' ? { role, delivery, playedMs: playedMs ?? 0, note: 'This response was not fully played. Exact heard words are unknown; do not assume this explanation was heard or learned.' } : { role, text, delivery }),
     studentMessage: input.text, availableCards: input.session.flashcards.map(({ id, conceptId }) => ({ id, conceptId })), messageIds: input.session.messages.slice(-14).map(message => message.id) }) }] }];
   let baseBoard = structuredClone(input.session.board), board = structuredClone(baseBoard), map = structuredClone(input.session.conceptMap ?? emptyConceptMap(input.session.topic));
@@ -83,8 +88,13 @@ export const generateTutorReply: GenerateReply = async input => {
       pending.mapUpdate = args; map = next; return { staged: true, mapRevision: map.revision, conceptIds: map.nodes.map(node => node.id) };
     }
     if (call.name === 'set_lesson_focus') { pending.focus = LessonFocusSchema.parse(call.args); return { staged: true }; }
+    if (call.name === 'show_model') {
+      const args = SpatialSelectionSchema.parse(call.args), selected = groundSpatialSelection(args)!;
+      pending.spatialUpdate = args;
+      return { staged: true, modelId: selected.model.id, assetVersion: selected.model.assetVersion, partIds: selected.parts.map(part => part.id), scaleNote: selected.model.scaleNote };
+    }
     const args = SubmitSchema.parse(call.args);
-    const beat = TeachingBeatProposalSchema.parse({ ...args, ...pending });
+    const beat = TeachingBeatProposalSchema.parse({ ...args, ...pending, ...(!beats.length && !pending.spatialUpdate && !pending.boardCommands.length && !pending.highlightNodeIds.length && selection?.spatial ? { spatialUpdate: selection.spatial } : {}) });
     validateTeachingPlan(input.session, [...beats, beat]);
     beats.push(beat); baseBoard = structuredClone(board); map = pruneMapBoardReferences(map, board); pending = { boardCommands: [], highlightNodeIds: [] };
     return { accepted: true, beatIndex: beats.length - 1, boardRevision: board.revision ?? 0, mapRevision: map.revision, remainingBeats: 2 - beats.length };

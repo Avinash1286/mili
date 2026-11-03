@@ -1,0 +1,996 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "id": "solar-system",
+      "assetVersion": "1.0.0",
+      "assetUrl": "/models/solar-system.glb",
+      "checksum": "e9ab2d31ff1231afce57b15814862cf297ad48735702080fc746ac591a5e0790",
+      "license": "MIT",
+      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "budget": {
+        "maxBytes": 2000000,
+        "maxTriangles": 50000,
+        "maxTextures": 0,
+        "maxMeshes": 160
+      },
+      "title": "Our solar system",
+      "topicIds": [
+        "solar-system"
+      ],
+      "description": "Trace the order of the eight planets around the Sun and compare rocky and giant planets.",
+      "scaleNote": "Illustrative model. Planet sizes, orbital distances and orbital speeds are deliberately compressed; orbits are shown as circles in one plane. This is not a scale simulation.",
+      "accessibilityDescription": "The Sun sits at the center of eight nested orbital rings. Planets are individually selectable, from Mercury through Neptune.",
+      "sources": [
+        {
+          "title": "NASA: About the planets",
+          "url": "https://science.nasa.gov/solar-system/planets/"
+        }
+      ],
+      "cameraPresets": [
+        {
+          "id": "overview",
+          "label": "Overview",
+          "position": [
+            0,
+            18,
+            23
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "top",
+          "label": "From above",
+          "position": [
+            0,
+            29,
+            0.01
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "animations": [
+        {
+          "id": "orbit",
+          "label": "Orbit planets",
+          "description": "Illustrative orbital motion, with deliberately simplified periods."
+        }
+      ],
+      "parts": [
+        {
+          "id": "sun",
+          "label": "Sun",
+          "description": "The Sun is a star. Its gravity holds the solar system together, and its light supplies energy to Earth.",
+          "conceptIds": [
+            "sun"
+          ],
+          "meshNames": [
+            "sun"
+          ],
+          "diagram": {
+            "x": 345,
+            "y": 170,
+            "width": 110,
+            "height": 90,
+            "color": "#e8bf62",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "mercury",
+          "label": "Mercury",
+          "description": "Mercury is the closest planet to the Sun and the smallest of the eight planets. It is a rocky world.",
+          "conceptIds": [
+            "mercury"
+          ],
+          "meshNames": [
+            "mercury"
+          ],
+          "diagram": {
+            "x": 35,
+            "y": 45,
+            "width": 110,
+            "height": 64,
+            "color": "#b4a38c",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "venus",
+          "label": "Venus",
+          "description": "Venus is the second planet from the Sun. Its dense atmosphere traps heat, making its surface hotter than Mercury’s.",
+          "conceptIds": [
+            "venus"
+          ],
+          "meshNames": [
+            "venus"
+          ],
+          "diagram": {
+            "x": 200,
+            "y": 45,
+            "width": 110,
+            "height": 64,
+            "color": "#d5ab72",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "earth",
+          "label": "Earth",
+          "description": "Earth is the third planet from the Sun, a rocky world with liquid oceans and the only world known to support life.",
+          "conceptIds": [
+            "earth"
+          ],
+          "meshNames": [
+            "earth"
+          ],
+          "diagram": {
+            "x": 365,
+            "y": 45,
+            "width": 110,
+            "height": 64,
+            "color": "#6d9ca3",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "mars",
+          "label": "Mars",
+          "description": "Mars is the fourth planet from the Sun. Iron-bearing minerals give this rocky planet its reddish appearance.",
+          "conceptIds": [
+            "mars"
+          ],
+          "meshNames": [
+            "mars"
+          ],
+          "diagram": {
+            "x": 530,
+            "y": 45,
+            "width": 110,
+            "height": 64,
+            "color": "#bc8066",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "jupiter",
+          "label": "Jupiter",
+          "description": "Jupiter is the fifth planet and the largest planet in the solar system. It is a gas giant.",
+          "conceptIds": [
+            "jupiter"
+          ],
+          "meshNames": [
+            "jupiter"
+          ],
+          "diagram": {
+            "x": 35,
+            "y": 310,
+            "width": 110,
+            "height": 64,
+            "color": "#c49b74",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "saturn",
+          "label": "Saturn",
+          "description": "Saturn is the sixth planet. It is a gas giant surrounded by a prominent system of rings made mostly of ice particles.",
+          "conceptIds": [
+            "saturn"
+          ],
+          "meshNames": [
+            "saturn"
+          ],
+          "diagram": {
+            "x": 200,
+            "y": 310,
+            "width": 110,
+            "height": 64,
+            "color": "#cfbb85",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "uranus",
+          "label": "Uranus",
+          "description": "Uranus is the seventh planet. This ice giant rotates with its axis tilted almost into the plane of its orbit.",
+          "conceptIds": [
+            "uranus"
+          ],
+          "meshNames": [
+            "uranus"
+          ],
+          "diagram": {
+            "x": 365,
+            "y": 310,
+            "width": 110,
+            "height": 64,
+            "color": "#8ebbbe",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "neptune",
+          "label": "Neptune",
+          "description": "Neptune is the eighth and most distant planet from the Sun. It is an ice giant.",
+          "conceptIds": [
+            "neptune"
+          ],
+          "meshNames": [
+            "neptune"
+          ],
+          "diagram": {
+            "x": 530,
+            "y": 310,
+            "width": 110,
+            "height": 64,
+            "color": "#7196bc",
+            "shape": "ellipse"
+          }
+        }
+      ],
+      "fallback": {
+        "title": "Planet order",
+        "description": "Read outward from the Sun: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus and Neptune. The diagram is not to scale.",
+        "relations": []
+      },
+      "generated": {
+        "bytes": 401416,
+        "triangles": 14800,
+        "meshes": 20,
+        "textures": 0,
+        "generator": "scripts/generate-spatial-assets.ts",
+        "generatorVersion": "1.0.0"
+      }
+    },
+    {
+      "id": "dna",
+      "assetVersion": "1.0.0",
+      "assetUrl": "/models/dna.glb",
+      "checksum": "2417c2da66b92059afe8feb1f6e8282e7e5a468e477f87c88baa28fb167db4c6",
+      "license": "MIT",
+      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "budget": {
+        "maxBytes": 2000000,
+        "maxTriangles": 50000,
+        "maxTextures": 0,
+        "maxMeshes": 160
+      },
+      "title": "Inside the DNA double helix",
+      "topicIds": [
+        "dna"
+      ],
+      "description": "See two sugar–phosphate backbones and the complementary base pairs that connect them.",
+      "scaleNote": "A schematic double helix, not an atomistic molecular model. Colors are teaching labels; bond lengths, helix pitch and base shapes are illustrative.",
+      "accessibilityDescription": "Two twisting backbones form the sides of a ladder. Adenine pairs with thymine; cytosine pairs with guanine. Base pairs form the rungs.",
+      "sources": [
+        {
+          "title": "NHGRI: DNA fact sheet",
+          "url": "https://www.genome.gov/about-genomics/fact-sheets/Deoxyribonucleic-Acid-Fact-Sheet"
+        }
+      ],
+      "cameraPresets": [
+        {
+          "id": "overview",
+          "label": "Overview",
+          "position": [
+            8,
+            5,
+            13
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "side",
+          "label": "From the side",
+          "position": [
+            0,
+            0,
+            16
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "top",
+          "label": "Down the helix",
+          "position": [
+            0,
+            16,
+            0.01
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "animations": [
+        {
+          "id": "separate",
+          "label": "Separate strands",
+          "description": "Separates the two illustrated strands to reveal base pairing. This is not a replication simulation."
+        }
+      ],
+      "parts": [
+        {
+          "id": "backbone-a",
+          "label": "First backbone",
+          "description": "Alternating sugar and phosphate groups form one outer strand of the DNA molecule.",
+          "conceptIds": [
+            "backbone-a"
+          ],
+          "meshNames": [
+            "backbone-a"
+          ],
+          "diagram": {
+            "x": 60,
+            "y": 110,
+            "width": 120,
+            "height": 230,
+            "color": "#6e9b83",
+            "shape": "rectangle"
+          }
+        },
+        {
+          "id": "backbone-b",
+          "label": "Second backbone",
+          "description": "The second sugar–phosphate backbone runs alongside the first. The two strands are held together through paired bases.",
+          "conceptIds": [
+            "backbone-b"
+          ],
+          "meshNames": [
+            "backbone-b"
+          ],
+          "diagram": {
+            "x": 530,
+            "y": 110,
+            "width": 120,
+            "height": 230,
+            "color": "#a7b976",
+            "shape": "rectangle"
+          }
+        },
+        {
+          "id": "adenine",
+          "label": "Adenine (A)",
+          "description": "Adenine is one of DNA’s four bases. In DNA it pairs with thymine.",
+          "conceptIds": [
+            "adenine"
+          ],
+          "meshNames": [
+            "adenine"
+          ],
+          "diagram": {
+            "x": 245,
+            "y": 105,
+            "width": 110,
+            "height": 64,
+            "color": "#d4ae59",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "thymine",
+          "label": "Thymine (T)",
+          "description": "Thymine is one of DNA’s four bases. In DNA it pairs with adenine.",
+          "conceptIds": [
+            "thymine"
+          ],
+          "meshNames": [
+            "thymine"
+          ],
+          "diagram": {
+            "x": 380,
+            "y": 105,
+            "width": 110,
+            "height": 64,
+            "color": "#b98b67",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "cytosine",
+          "label": "Cytosine (C)",
+          "description": "Cytosine is one of DNA’s four bases. In DNA it pairs with guanine.",
+          "conceptIds": [
+            "cytosine"
+          ],
+          "meshNames": [
+            "cytosine"
+          ],
+          "diagram": {
+            "x": 245,
+            "y": 285,
+            "width": 110,
+            "height": 64,
+            "color": "#76a6b0",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "guanine",
+          "label": "Guanine (G)",
+          "description": "Guanine is one of DNA’s four bases. In DNA it pairs with cytosine.",
+          "conceptIds": [
+            "guanine"
+          ],
+          "meshNames": [
+            "guanine"
+          ],
+          "diagram": {
+            "x": 380,
+            "y": 285,
+            "width": 110,
+            "height": 64,
+            "color": "#a188ae",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "base-pair",
+          "label": "A base pair",
+          "description": "A base pair joins complementary bases across the double helix: A with T, or C with G. The sequence of bases carries biological information.",
+          "conceptIds": [
+            "base-pair"
+          ],
+          "meshNames": [
+            "base-pair"
+          ],
+          "diagram": {
+            "x": 280,
+            "y": 195,
+            "width": 160,
+            "height": 56,
+            "color": "#b8b98d",
+            "shape": "rectangle"
+          }
+        }
+      ],
+      "fallback": {
+        "title": "Complementary base pairing",
+        "description": "Two sugar–phosphate backbones enclose the paired bases. Read A–T and C–G across the ladder.",
+        "relations": [
+          {
+            "from": "adenine",
+            "to": "thymine",
+            "label": "pairs with"
+          },
+          {
+            "from": "cytosine",
+            "to": "guanine",
+            "label": "pairs with"
+          }
+        ]
+      },
+      "generated": {
+        "bytes": 129192,
+        "triangles": 2432,
+        "meshes": 26,
+        "textures": 0,
+        "generator": "scripts/generate-spatial-assets.ts",
+        "generatorVersion": "1.0.0"
+      }
+    },
+    {
+      "id": "chloroplast",
+      "assetVersion": "1.0.0",
+      "assetUrl": "/models/chloroplast.glb",
+      "checksum": "0b20b98ba7ac36c784ff261f755c34db8b28705c9cb223ca04ce2bd779e7a209",
+      "license": "MIT",
+      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "budget": {
+        "maxBytes": 2000000,
+        "maxTriangles": 50000,
+        "maxTextures": 0,
+        "maxMeshes": 160
+      },
+      "title": "A chloroplast, opened up",
+      "topicIds": [
+        "photosynthesis"
+      ],
+      "description": "Explore the membranes and internal compartments where photosynthesis takes place.",
+      "scaleNote": "Schematic cutaway of one chloroplast, not a whole plant cell. Compartments and membranes are enlarged for teaching and are not drawn to scale.",
+      "accessibilityDescription": "An outer and inner envelope enclose the stroma. Stacks of thylakoid discs called grana sit inside, connected by lamellae.",
+      "sources": [
+        {
+          "title": "NCBI Bookshelf: Chloroplasts and photosynthesis",
+          "url": "https://www.ncbi.nlm.nih.gov/books/NBK26819/"
+        }
+      ],
+      "cameraPresets": [
+        {
+          "id": "overview",
+          "label": "Cutaway view",
+          "position": [
+            10,
+            8,
+            12
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "side",
+          "label": "From the side",
+          "position": [
+            0,
+            3,
+            15
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "top",
+          "label": "From above",
+          "position": [
+            0,
+            16,
+            0.01
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "animations": [
+        {
+          "id": "expand",
+          "label": "Expand the cutaway",
+          "description": "Moves the schematic envelope apart to reveal the internal compartments."
+        }
+      ],
+      "parts": [
+        {
+          "id": "outer-membrane",
+          "label": "Outer membrane",
+          "description": "The outer membrane is one layer of the chloroplast envelope that separates the organelle from the cell’s cytoplasm.",
+          "conceptIds": [
+            "outer-membrane"
+          ],
+          "meshNames": [
+            "outer-membrane"
+          ],
+          "diagram": {
+            "x": 35,
+            "y": 55,
+            "width": 170,
+            "height": 70,
+            "color": "#8aa879",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "inner-membrane",
+          "label": "Inner membrane",
+          "description": "The inner membrane surrounds the stroma. It is the second membrane of the chloroplast envelope.",
+          "conceptIds": [
+            "inner-membrane"
+          ],
+          "meshNames": [
+            "inner-membrane"
+          ],
+          "diagram": {
+            "x": 245,
+            "y": 55,
+            "width": 170,
+            "height": 70,
+            "color": "#adc28d",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "stroma",
+          "label": "Stroma",
+          "description": "The stroma is the fluid compartment inside the inner membrane and outside the thylakoids. Carbon fixation reactions take place here.",
+          "conceptIds": [
+            "stroma"
+          ],
+          "meshNames": [
+            "stroma"
+          ],
+          "diagram": {
+            "x": 455,
+            "y": 55,
+            "width": 170,
+            "height": 70,
+            "color": "#ced6a2",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "granum",
+          "label": "Granum",
+          "description": "A granum is a stack of flattened thylakoids. A chloroplast usually contains several grana.",
+          "conceptIds": [
+            "granum"
+          ],
+          "meshNames": [
+            "granum"
+          ],
+          "diagram": {
+            "x": 35,
+            "y": 265,
+            "width": 170,
+            "height": 70,
+            "color": "#527d50",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "thylakoid",
+          "label": "Thylakoid membrane",
+          "description": "Thylakoid membranes contain chlorophyll and the molecular machinery for the light-dependent reactions of photosynthesis.",
+          "conceptIds": [
+            "thylakoid"
+          ],
+          "meshNames": [
+            "thylakoid"
+          ],
+          "diagram": {
+            "x": 245,
+            "y": 265,
+            "width": 170,
+            "height": 70,
+            "color": "#78a766",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "lamella",
+          "label": "Stroma lamella",
+          "description": "Stroma lamellae connect the thylakoid membranes of different grana.",
+          "conceptIds": [
+            "lamella"
+          ],
+          "meshNames": [
+            "lamella"
+          ],
+          "diagram": {
+            "x": 455,
+            "y": 265,
+            "width": 170,
+            "height": 70,
+            "color": "#a2ba6f",
+            "shape": "ellipse"
+          }
+        }
+      ],
+      "fallback": {
+        "title": "Chloroplast compartments",
+        "description": "The two envelope membranes surround the stroma. Inside are grana made of thylakoid discs, with lamellae connecting the stacks.",
+        "relations": [
+          {
+            "from": "outer-membrane",
+            "to": "inner-membrane",
+            "label": "encloses"
+          },
+          {
+            "from": "inner-membrane",
+            "to": "stroma",
+            "label": "surrounds"
+          },
+          {
+            "from": "granum",
+            "to": "thylakoid",
+            "label": "stack of"
+          }
+        ]
+      },
+      "generated": {
+        "bytes": 208780,
+        "triangles": 5528,
+        "meshes": 20,
+        "textures": 0,
+        "generator": "scripts/generate-spatial-assets.ts",
+        "generatorVersion": "1.0.0"
+      }
+    },
+    {
+      "id": "heart",
+      "assetVersion": "1.0.0",
+      "assetUrl": "/models/heart.glb",
+      "checksum": "edac399289b965733dac2680cc6799e65927b8bdb94a86da132509fd2f4f65dd",
+      "license": "MIT",
+      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "budget": {
+        "maxBytes": 2000000,
+        "maxTriangles": 50000,
+        "maxTextures": 0,
+        "maxMeshes": 160
+      },
+      "title": "Follow blood through the heart",
+      "topicIds": [
+        "heart"
+      ],
+      "description": "Follow the two pumping circuits through the four chambers and major blood vessels.",
+      "scaleNote": "An educational schematic, not a medical or anatomical reference. Shape, wall thickness and vessel paths are simplified. Blue means lower oxygen in this diagram; human blood is never blue. Right and left refer to the person’s body.",
+      "accessibilityDescription": "In the front view, the right heart is on the viewer’s left. Blood travels from the body to the right atrium, right ventricle and lungs, then to the left atrium, left ventricle and body.",
+      "sources": [
+        {
+          "title": "NHLBI: How blood flows through the heart",
+          "url": "https://www.nhlbi.nih.gov/health/heart/blood-flow"
+        }
+      ],
+      "cameraPresets": [
+        {
+          "id": "overview",
+          "label": "Front view",
+          "position": [
+            0,
+            3,
+            15
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "side",
+          "label": "Side view",
+          "position": [
+            14,
+            3,
+            2
+          ],
+          "target": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "animations": [
+        {
+          "id": "flow",
+          "label": "Trace blood flow",
+          "description": "A moving marker traces the schematic flow route. It does not represent real flow speed or a cardiac cycle."
+        }
+      ],
+      "parts": [
+        {
+          "id": "right-atrium",
+          "label": "Right atrium",
+          "description": "The right atrium receives oxygen-poor blood returning from the body through the venae cavae.",
+          "conceptIds": [
+            "right-atrium"
+          ],
+          "meshNames": [
+            "right-atrium"
+          ],
+          "diagram": {
+            "x": 105,
+            "y": 115,
+            "width": 150,
+            "height": 74,
+            "color": "#739db4",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "right-ventricle",
+          "label": "Right ventricle",
+          "description": "The right ventricle pumps blood to the lungs through the pulmonary artery.",
+          "conceptIds": [
+            "right-ventricle"
+          ],
+          "meshNames": [
+            "right-ventricle"
+          ],
+          "diagram": {
+            "x": 105,
+            "y": 265,
+            "width": 150,
+            "height": 84,
+            "color": "#5c89a3",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "left-atrium",
+          "label": "Left atrium",
+          "description": "The left atrium receives oxygen-rich blood returning from the lungs through the pulmonary veins.",
+          "conceptIds": [
+            "left-atrium"
+          ],
+          "meshNames": [
+            "left-atrium"
+          ],
+          "diagram": {
+            "x": 455,
+            "y": 115,
+            "width": 150,
+            "height": 74,
+            "color": "#cf8d7b",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "left-ventricle",
+          "label": "Left ventricle",
+          "description": "The left ventricle pumps oxygen-rich blood to the body through the aorta.",
+          "conceptIds": [
+            "left-ventricle"
+          ],
+          "meshNames": [
+            "left-ventricle"
+          ],
+          "diagram": {
+            "x": 455,
+            "y": 265,
+            "width": 150,
+            "height": 84,
+            "color": "#b96d60",
+            "shape": "ellipse"
+          }
+        },
+        {
+          "id": "vena-cava",
+          "label": "Venae cavae",
+          "description": "The superior and inferior venae cavae carry blood from the body into the right atrium.",
+          "conceptIds": [
+            "vena-cava"
+          ],
+          "meshNames": [
+            "vena-cava"
+          ],
+          "diagram": {
+            "x": 20,
+            "y": 20,
+            "width": 150,
+            "height": 56,
+            "color": "#91aebe",
+            "shape": "rectangle"
+          }
+        },
+        {
+          "id": "pulmonary-artery",
+          "label": "Pulmonary artery",
+          "description": "The pulmonary artery carries oxygen-poor blood away from the right ventricle toward the lungs.",
+          "conceptIds": [
+            "pulmonary-artery"
+          ],
+          "meshNames": [
+            "pulmonary-artery"
+          ],
+          "diagram": {
+            "x": 205,
+            "y": 20,
+            "width": 150,
+            "height": 56,
+            "color": "#7d9cb5",
+            "shape": "rectangle"
+          }
+        },
+        {
+          "id": "pulmonary-veins",
+          "label": "Pulmonary veins",
+          "description": "The pulmonary veins carry oxygen-rich blood from the lungs into the left atrium.",
+          "conceptIds": [
+            "pulmonary-veins"
+          ],
+          "meshNames": [
+            "pulmonary-veins"
+          ],
+          "diagram": {
+            "x": 390,
+            "y": 20,
+            "width": 150,
+            "height": 56,
+            "color": "#d8a08c",
+            "shape": "rectangle"
+          }
+        },
+        {
+          "id": "aorta",
+          "label": "Aorta",
+          "description": "The aorta carries oxygen-rich blood from the left ventricle to the body.",
+          "conceptIds": [
+            "aorta"
+          ],
+          "meshNames": [
+            "aorta"
+          ],
+          "diagram": {
+            "x": 575,
+            "y": 20,
+            "width": 110,
+            "height": 56,
+            "color": "#bd7b69",
+            "shape": "rectangle"
+          }
+        },
+        {
+          "id": "valves",
+          "label": "Heart valves",
+          "description": "Valves open and close to keep blood moving forward. Four valves separate the pumping stages in the heart.",
+          "conceptIds": [
+            "valves"
+          ],
+          "meshNames": [
+            "valves"
+          ],
+          "diagram": {
+            "x": 305,
+            "y": 200,
+            "width": 100,
+            "height": 70,
+            "color": "#d8bc78",
+            "shape": "ellipse"
+          }
+        }
+      ],
+      "fallback": {
+        "title": "The blood-flow route",
+        "description": "Body → right atrium → right ventricle → lungs → left atrium → left ventricle → body. The pulmonary circuit exchanges gases at the lungs; the systemic circuit supplies the body.",
+        "relations": [
+          {
+            "from": "vena-cava",
+            "to": "right-atrium",
+            "label": "from body"
+          },
+          {
+            "from": "right-atrium",
+            "to": "right-ventricle",
+            "label": "through valve"
+          },
+          {
+            "from": "right-ventricle",
+            "to": "pulmonary-artery",
+            "label": "to lungs"
+          },
+          {
+            "from": "pulmonary-veins",
+            "to": "left-atrium",
+            "label": "from lungs"
+          },
+          {
+            "from": "left-atrium",
+            "to": "left-ventricle",
+            "label": "through valve"
+          },
+          {
+            "from": "left-ventricle",
+            "to": "aorta",
+            "label": "to body"
+          }
+        ]
+      },
+      "generated": {
+        "bytes": 220740,
+        "triangles": 8256,
+        "meshes": 14,
+        "textures": 0,
+        "generator": "scripts/generate-spatial-assets.ts",
+        "generatorVersion": "1.0.0"
+      }
+    }
+  ]
+}

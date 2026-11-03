@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../../apps/api/src/app.js';
 import type { TranscriberInput, SynthesizerInput, SpeakOptions } from '../../packages/speech/src/index.js';
 import { DELAYED_VISUAL_REQUEST, VISUAL_REQUEST, visualReply } from './teaching.js';
+import { SPATIAL_REQUEST, SPATIAL_SEQUENCE_REQUEST, spatialReply } from './spatial.js';
+import { resolveSpatialSelection } from '../../packages/contracts/src/index.js';
 
 async function main() {
 const directory = await mkdtemp(path.join(tmpdir(), 'tokai-voice-e2e-'));
@@ -29,6 +31,11 @@ const app = await createApp({
     // Deliberately emulate a provider that completes despite cancellation.
     if (text !== DELAYED_VISUAL_REQUEST) signal?.throwIfAborted();
     if (text === VISUAL_REQUEST || text === DELAYED_VISUAL_REQUEST) return visualReply(session);
+    if (text === SPATIAL_REQUEST || text === SPATIAL_SEQUENCE_REQUEST) return spatialReply(text === SPATIAL_SEQUENCE_REQUEST);
+    if (selection?.spatial) {
+      const { model, parts } = resolveSpatialSelection(selection.spatial);
+      return { text: `Selected model: ${model.title}. ${parts.map(part => `${part.label}: ${part.description}`).join(' ')}` };
+    }
     const selected = session.board.nodes.find(node => node.id === (selection?.shapeIds[0] ?? selectedNodeId));
     if (selected) return { text: `Selected concept: ${selected.label}. ${selected.detail}` };
     return { text: `Fixture tutor response: ${text}. Sunlight supplies the energy plants use to make sugar.` };

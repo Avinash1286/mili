@@ -1,0 +1,57 @@
+Tokai's MediaPipe provenance notice — not an upstream NOTICE file
+
+Runtime
+-------
+MediaPipe Tasks Vision, @mediapipe/tasks-vision version 1.2.0.
+Publisher/author recorded in the official npm package: mediapipe@google.com.
+The package declares Apache-2.0. JavaScript and WASM files in this directory
+are unmodified copies from that exact package. Their byte counts and SHA-256
+identities, plus the npm tarball integrity value, are in manifest.json.
+
+LICENSE-APACHE-2.0.txt is the complete, unmodified upstream LICENSE, pinned to
+google-ai-edge/mediapipe commit ce3cd94f457970502adb855fc723d2d13ae47980.
+It includes the upstream license's additional notices; they are retained.
+No separate top-level NOTICE file was found in the official repository or
+the installed npm package. This notice does not claim to be one.
+
+Gesture Recognizer model
+------------------------
+gesture_recognizer.task is Google's unmodified float16 version 1 bundle.
+Official source:
+https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task
+SHA-256:
+97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482
+
+The model's weight-license field is recorded as NOASSERTION. This means
+the reviewed evidence did not establish an explicit redistribution license
+for this exact prepackaged bundle. It does not mean public domain, permission
+denied, or Apache-2.0 by assumption. The runtime's Apache license is not used
+as a substitute for an explicit model-weight license.
+
+Official evidence reviewed:
+https://developers.google.com/edge/mediapipe/solutions/vision/gesture_recognizer
+https://storage.googleapis.com/mediapipe-assets/gesture_recognizer/model_card_hand_gesture_classification_with_faireness_2022.pdf
+https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/model_maker/models/gesture_recognizer/BUILD
+
+The BUILD file has an Apache header and a Bazel licenses(["notice"])
+classification and lists gesture-classifier, embedder, hand-landmark and
+palm-detection assets. This is supporting component evidence, but does not
+explicitly identify the complete float16/1 .task bundle or provide a separate
+license grant for its exact contents. The linked model card describes uses
+and limitations; it does not state an explicit distribution license.
+
+No new license is granted by Tokai for these third-party weights. Resolve the
+bundle's redistribution terms before treating them as cleared for general
+redistribution. The sync script reproduces the official download and verifies
+its identity; it does not settle rights or silently relabel the bundle.
+
+Use and privacy
+---------------
+The official model card describes hand-control and gesture-recognition uses.
+It excludes surveillance/identity recognition and sign-language translation;
+it also describes limits with low light, motion blur and other conditions.
+Tokai uses local hand landmarks for explicitly enabled controls. Camera
+frames are not included in Tokai API messages. This is not a claim of
+universal device accuracy or a new privacy statement on behalf of Google.
+
+Recorded 2026-11-03. See manifest.json and README.md for reproducibility.

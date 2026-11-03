@@ -31,9 +31,11 @@ export function commitBeatVisuals(session: Session, beatId: string) {
     if (beat.mapUpdate) next.conceptMap = applyMapUpdate(next.conceptMap ?? emptyConceptMap(next.topic), beat.mapUpdate, 'tutor');
     if (next.conceptMap) next.conceptMap = pruneMapBoardReferences(next.conceptMap, next.board);
     if (beat.focus) next.lessonFocus = beat.focus;
-    session.board = next.board; session.boardOperations = next.boardOperations; session.conceptMap = next.conceptMap; session.lessonFocus = next.lessonFocus;
+    if (beat.spatialUpdate) { next.spatialState = structuredClone(beat.spatialUpdate); next.visualSurface = 'spatial'; }
+    else if (beat.boardCommands.length || beat.highlightNodeIds.length) next.visualSurface = 'board';
+    session.board = next.board; session.boardOperations = next.boardOperations; session.conceptMap = next.conceptMap; session.lessonFocus = next.lessonFocus; session.spatialState = next.spatialState; session.visualSurface = next.visualSurface;
     beat.status = 'ready'; beat.boardRevision = session.board.revision ?? 0;
-    return { beat, applied: Boolean(beat.boardCommands.length) };
+    return { beat, applied: Boolean(beat.boardCommands.length || beat.spatialUpdate) };
   } catch (error) {
     const safe = sceneFailure(error);
     beat.status = 'ready'; beat.boardRevision = session.board.revision ?? 0;

@@ -4,7 +4,7 @@ import type { WebSocket, RawData } from 'ws';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { VoiceClientEventSchema, decodeAudioFrame, encodeAudioFrame, MAX_AUDIO_SAMPLES, type Session, type VoiceClientEvent, type VoiceState, type SelectionContext, type TeachingBeat } from '@tokai/contracts';
 import { createTranscriber, createSynthesizer } from '@tokai/speech';
-import { type GenerateReply, TutorError } from '@tokai/tutor-core';
+import { type GenerateReply, TutorError, groundSpatialSelection } from '@tokai/tutor-core';
 import { ApiError, FileStore, type Principal } from './store.js';
 import { applySessionBoardTransaction, sceneFailure } from './board-operations.js';
 import { planTeachingBeats, appendTeachingBeats, commitBeatVisuals, markTeachingInterrupted } from './teaching.js';
@@ -186,7 +186,7 @@ class VoiceConnection {
   private save(session: Session) { session.revision++; session.updatedAt = new Date(this.options.now()).toISOString(); return this.options.store.save(this.ticket.principal, session); }
   private snapshot(session: Session) { this.emit({ type: 'session.snapshot', session }); }
   publishBoard(session: Session, operationId: string, beatId?: string) {
-    if (beatId) { this.emit({ type: 'board.patch', operationId, beatId, board: session.board, map: session.conceptMap }); return; }
+    if (beatId) { this.emit({ type: 'board.patch', operationId, beatId, board: session.board, map: session.conceptMap, spatialState: session.teachingBeats?.find(beat => beat.beatId === beatId)?.spatialUpdate, visualSurface: session.visualSurface }); return; }
     this.snapshot(session); this.emit({ type: 'board.patch', operationId, board: session.board });
     if (session.conceptMap) this.emit({ type: 'map.patch', map: session.conceptMap });
   }
@@ -232,6 +232,7 @@ class VoiceConnection {
       case 'selection.update': {
         const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
         if (event.selectedNodeId && !session.board.nodes.some(node => node.id === event.selectedNodeId)) throw new ApiError(400, 'INVALID_SELECTION', 'Select an existing board concept.');
+        groundSpatialSelection(event.selection?.spatial);
         this.selection = event.selectedNodeId; this.selectionContext = event.selection; break;
       }
       case 'board.ready': if (this.boardGate?.beatId === event.beatId && this.boardGate.epoch === event.outputEpoch && this.boardGate.revision === event.boardRevision) this.boardGate.resolve(event.ready); break;
@@ -331,6 +332,7 @@ class VoiceConnection {
       if (existing) { if (existing.text !== text) throw new ApiError(409, 'REQUEST_ID_REUSED', 'Use a new request ID for a different message.'); this.snapshot(session); return; }
       if (session.messages.length > 198 || (session.teachingBeats?.length ?? 0) > 198) throw new ApiError(429, 'TURN_LIMIT', 'Finish this lesson before starting another conversation.');
       if (selectedNodeId && !session.board.nodes.some(node => node.id === selectedNodeId)) throw new ApiError(400, 'INVALID_SELECTION', 'The selected board item no longer exists.');
+      groundSpatialSelection(selection?.spatial);
       const now = this.options.now(); this.turns = this.turns.filter(at => now - at < 60000);
       if (this.turns.length >= 12) throw new ApiError(429, 'VOICE_RATE_LIMIT', 'Please wait before asking another question.');
       this.turns.push(now);
@@ -394,7 +396,7 @@ class VoiceConnection {
     });
     if (!committed || !valid()) return;
     const { beat, session, warning } = committed;
-    const hasVisuals = !warning && Boolean(beat.boardCommands.length || beat.highlightNodeIds.length || beat.mapUpdate);
+    const hasVisuals = !warning && Boolean(beat.boardCommands.length || beat.highlightNodeIds.length || beat.mapUpdate || beat.spatialUpdate);
     const readiness = hasVisuals ? this.waitForBoard(beat, queue.controller) : Promise.resolve(false);
     this.emit({ type: 'tutor.beat', turnId: beat.turnId, messageId: beat.messageId, beatId: beat.beatId, text: beat.displayText, spokenText: beat.spokenText, conceptIds: beat.conceptIds, highlightNodeIds: warning ? [] : beat.highlightNodeIds });
     if (hasVisuals) this.publishBoard(session, `beat:${beat.beatId}`, beat.beatId); else this.snapshot(session);

@@ -163,11 +163,34 @@ describe('browser voice lifecycle', () => {
     socket.event({ type: 'audio.start', beatId: 'beat-1', turnId: 'turn-1', messageId: 'message-1', streamId: 7, sampleRate: 24000, visualReady: true });
     const playback = FakeWorklet.instances.find(node => node.name === 'tokai-playback')!;
     expect(socket.controls().some(event => event.type === 'board.ready')).toBe(false);
-    expect(runtime.onBoard).toHaveBeenCalledWith(expect.any(Object), 'beat-1', expect.any(AbortSignal), undefined, ['a']);
+    expect(runtime.onBoard).toHaveBeenCalledWith(expect.any(Object), 'beat-1', expect.any(AbortSignal), undefined, ['a'], undefined, undefined);
     expect(playback.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'start', ready: false, streamId: 7 }));
     finishRender(true); await vi.advanceTimersByTimeAsync(0);
     expect(socket.controls()).toContainEqual({ type: 'board.ready', beatId: 'beat-1', boardRevision: 1, outputEpoch: 10, ready: true });
     expect(playback.port.postMessage).toHaveBeenCalledWith({ type: 'release', epoch: 10, streamId: 7 });
+  });
+  it('retains the model for map-only beats and applies surface snapshots only after readiness', async () => {
+    const sessions: Session[] = []; runtime.onSession = value => sessions.push(value);
+    let finishRender!: (ready: boolean) => void;
+    runtime.onBoard = vi.fn(() => new Promise<boolean>(resolve => { finishRender = resolve; }));
+    await runtime.start(false); const socket = ready();
+    const spatialState = { modelId: 'dna' as const, assetVersion: '1.0.0', partIds: ['base-pair'] };
+    socket.event({ type: 'board.patch', operationId: 'model', beatId: 'model-beat', board: session.board, spatialState, visualSurface: 'spatial' });
+    socket.event({ type: 'session.snapshot', session: { ...session, spatialState, visualSurface: 'spatial' } });
+    expect(sessions.at(-1)?.spatialState).toBeUndefined();
+    expect(sessions.at(-1)?.visualSurface).toBeUndefined();
+    finishRender(true); await vi.advanceTimersByTimeAsync(0);
+    socket.event({ type: 'board.patch', operationId: 'map-only', beatId: 'map-beat', board: session.board, visualSurface: 'spatial' });
+    expect(runtime.onBoard).toHaveBeenLastCalledWith(expect.any(Object), 'map-beat', expect.any(AbortSignal), undefined, [], undefined, 'spatial');
+    finishRender(true); await vi.advanceTimersByTimeAsync(0);
+    socket.event({ type: 'session.snapshot', session: { ...session, spatialState, visualSurface: 'spatial' } });
+    expect(sessions.at(-1)?.spatialState).toEqual(spatialState);
+    expect(sessions.at(-1)?.visualSurface).toBe('spatial');
+    socket.event({ type: 'board.patch', operationId: 'diagram', beatId: 'diagram-beat', board: session.board, visualSurface: 'board' });
+    finishRender(true); await vi.advanceTimersByTimeAsync(0);
+    socket.event({ type: 'session.snapshot', session: { ...session, spatialState, visualSurface: 'board' } });
+    expect(sessions.at(-1)?.visualSurface).toBe('board');
+    expect(sessions.at(-1)?.spatialState).toEqual(spatialState);
   });
   it('never releases a stale visual prepare after interruption', async () => {
     let finishRender!: (ready: boolean) => void;

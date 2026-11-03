@@ -76,7 +76,7 @@ The user accepted the phase after the provider checks and browser testing. The l
 
 ## Phase 3 — teaching and visual coordination
 
-Status: implemented, automated checks passed, and approved for GitHub publishing by the user on 2026-11-03. Live visual-provider verification remains open as detailed below. Phase 2 is pushed to `main` at `80ea6eabc2ca7a47a829a16c1b3837523b960b46`.
+Status: implemented, automated checks passed, and pushed to GitHub at `1baa9f4` on 2026-11-03. Live visual-provider verification remains open as detailed below. Phase 2 is pushed to `main` at `80ea6eabc2ca7a47a829a16c1b3837523b960b46`.
 
 Scope: bounded Gemini teaching tools, semantic board transactions and editable diagram templates, independent board/map revisions, student-work protection, selection grounding, explicit board-crop image explanations, linked concept maps, and teaching beats gated by visual readiness and browser playback completion. See [architecture decisions](phase-3-architecture.md). User accounts and distributed persistence, gestures and 3D remain in their planned phases.
 
@@ -108,10 +108,38 @@ Live Gemini checks exposed an ambiguous drawing-tool schema; diagram creation an
 
 The direct Gemini plus AssemblyAI architecture and existing free-account preference remain in effect. Live requests consume the configured accounts' quota/credits; account billing settings have not been independently inspected. User handoff: [Phase 3 testing checklist](phase-3-testing.md). The user authorized continuing through Phases 4–6 and pushing each completed phase without waiting for separate manual testing.
 
+## Phase 4 — gestures and spatial lessons
+
+Status: implemented and checked locally; publishing authorized by the user. Physical hand-recognition and combined real-device audio/graphics measurements remain unverified.
+
+### Delivered
+
+- Optional local MediaPipe tracking, self-hosted pinned assets, compatible ES-module WASM worker, throttled fallback, camera denial/late-permission/loading-cancellation recovery, hidden-page cleanup and inference deadlines.
+- Mirroring, hand preference, two-corner calibration, smoothing/dead zones, deliberate draw/pan/pinch/zoom/rotation, ambiguous-circle confirmation and opt-in palm help with dwell/cooldown. Help prepares a question for the learner to send; it never infers emotion or understanding. Pointer, keyboard and text alternatives remain available.
+- Four original procedural GLBs: solar system, DNA, chloroplast and a schematic heart. Catalog manifests include semantic parts, sources, scale limitations, geometry budgets, checksums, MIT asset attribution and labeled 2D/text alternatives. Controls include orbit, zoom, camera presets, labels, selection, isolation and animation, with resource disposal.
+- Bounded catalog-only tutor tools and trusted part grounding, durable teaching beats, readiness/playback gates, saved model/surface state, model-to-board transitions and preservation of manual selections for text-only answers.
+- Reproducible asset sync/check scripts and [Phase 4 testing instructions](phase-4-testing.md). External hand-model weights are downloaded locally and excluded from Git; source and checksum remain tracked. Inspected sources did not establish an explicit redistribution license for that exact bundle.
+
+### Verification completed
+
+- `pnpm typecheck` passed across applications, packages, scripts and browser fixtures.
+- `pnpm test`: **198 passed** — 28 contracts, 46 speech, 58 browser/worklet/gesture/spatial, 30 tutor and 36 API.
+- `pnpm build`: production Next.js build and API build check passed.
+- `pnpm test:e2e`: **21 Chromium scenarios passed** in the final full run. The additional manual-selection regression passed in a focused rerun after its fix. Coverage includes the prior twelve scenarios, camera lifecycle/inference, all four actual GLBs, keyboard manipulation, fallback, grounding/reload, board transitions and readiness/interruption.
+- The actual MediaPipe worker/WASM/model initialized and produced at least three inference results on synthetic blank camera frames. Disable stopped the live track, and no external requests were observed during that short test window. This establishes startup/inference plumbing and cleanup, not recognition accuracy or every SDK behavior over a long session.
+- `pnpm assets:check`: all nine local assets matched pinned hashes and byte counts. The external task model remains ignored by Git.
+- Desktop/mobile screenshots inspected; the mobile walkthrough confirmed no horizontal overflow. A later focused screenshot correctly retained the manually selected DNA part.
+
+Checks exposed and corrected a Windows Vitest glob issue, incompatible worker WASM loader, stale-label crash while switching models, hidden-board transitions and text-only selection resets. Live Gemini model-tool quality, physical camera calibration/recognition, low light/occlusion, Safari/iOS, screen readers and combined speech/gesture/3D performance remain device-validation items. No live provider requests or account upgrades were made for these checks.
+
+## Current delivery scope
+
+The user selected **local deployment** and asked for the complete functional project, including fixes to original feature gaps. Hosting, submission, demo videos and other presentation materials are explicitly deferred. Complete and verify each implementation phase locally, then push it to GitHub; separate manual approval is no longer required for each push. Physical-device and human curriculum validation cannot be inferred from automated fixtures.
+
 ## Following phases (authorized to proceed sequentially)
 
 1. **Phase 4 — gestures and spatial lessons:** local MediaPipe, calibration, accessible alternatives, licensed 3D catalog and part selection.
 2. **Phase 5 — durable learning:** accounts/PostgreSQL where not already delivered, source upload/retrieval, assessments, mastery evidence, scheduled reviews, summaries/recaps, exports and sharing.
-3. **Phase 6 — release and hackathon proof:** real-device/accessibility/security/fault checks, capacity and cost measurements, deployment/restore, provenance, demo and verified submission obligations.
+3. **Phase 6 — local release readiness:** accessibility/security/fault checks, capacity/resource measurements, local deployment/restore and operating documentation. Public hosting, demonstration and submission remain deferred by the user.
 
 These are reviewable delivery increments across the full imp.md dependency graph. They do not remove planned work. Run the relevant checks and record results before each phase's GitHub push.

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SpatialSelectionSchema } from './spatial';
 import { SessionSchema, BoardSchema, ConceptMapSchema, SelectionContextSchema, BoardTransactionSchema } from './index';
 
 export const VOICE_PROTOCOL_VERSION = 1;
@@ -40,7 +41,7 @@ export const VoiceServerEventSchema = z.discriminatedUnion('type', [
   z.object({ ...envelope, type: z.literal('transcript.partial'), turnId: z.string(), text: z.string().max(12000) }),
   z.object({ ...envelope, type: z.literal('transcript.final'), turnId: z.string(), text: z.string().max(12000) }),
   z.object({ ...envelope, type: z.literal('tutor.beat'), turnId: z.string(), messageId: z.string(), beatId: z.string().optional(), text: z.string().max(12000), spokenText: z.string().max(1200).optional(), conceptIds: z.array(z.string()).max(24).optional(), highlightNodeIds: z.array(z.string()).max(40).optional() }),
-  z.object({ ...envelope, type: z.literal('board.patch'), beatId: z.string().optional(), operationId: z.string(), board: z.lazy(() => BoardSchema), map: z.lazy(() => ConceptMapSchema).optional() }),
+  z.object({ ...envelope, type: z.literal('board.patch'), beatId: z.string().optional(), operationId: z.string(), board: z.lazy(() => BoardSchema), map: z.lazy(() => ConceptMapSchema).optional(), spatialState: SpatialSelectionSchema.optional(), visualSurface: z.enum(['board', 'spatial']).optional() }),
   z.object({ ...envelope, type: z.literal('map.patch'), map: z.lazy(() => ConceptMapSchema) }),
   z.object({ ...envelope, type: z.literal('audio.start'), streamId: uint, turnId: z.string(), messageId: z.string(), beatId: z.string().optional(), visualReady: z.boolean().default(true), sampleRate: z.literal(24000) }),
   z.object({ ...envelope, type: z.literal('audio.end'), streamId: uint }),

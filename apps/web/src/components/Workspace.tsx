@@ -1,6 +1,13 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import { GestureControls } from './GestureControls';
+import type { GestureAction } from '@/lib/gestures';
+import type { BoardInteractionAdapter } from '@/lib/board-interaction';
+import type { SpatialSelection } from '@tokai/contracts';
+import type { SpatialInteractionAdapter } from './spatial/SpatialViewer';
+const SpatialViewer = dynamic(() => import('./spatial/SpatialViewer').then(module => module.SpatialViewer), { ssr: false, loading: () => <p role="status">Opening 3D learning space…</p> });
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Download, Layers3, MessageCircle, RefreshCw, Send, Sparkles, Square, Volume2, X, Save, RotateCcw, Lightbulb, CheckCircle2 } from 'lucide-react';
 import { type Board, type Session, type Capabilities, type BoardAdapter, type SelectionContext, type ConceptMap, type MapUpdate, TOPICS } from '@tokai/contracts';
 import { api, errorText, downloadSummary, RequestError } from '@/lib/api';
@@ -16,6 +23,12 @@ export function Workspace({ id }: { id: string }) {
   const [session, setSession] = useState<Session>(); const [draft, setDraft] = useState<Board>(); const [selectedId, setSelectedId] = useState<string>();
   const [selection, setSelection] = useState<SelectionContext>(); const [conflict, setConflict] = useState(false); const [studyWidth, setStudyWidth] = useState(390);
   const [boardFocus, setBoardFocus] = useState<BoardFocusRequest>();
+  const [spatialReadyKey, setSpatialReadyKey] = useState('');
+  const [spatialOpen, setSpatialOpen] = useState(false), [spatialSelection, setSpatialSelection] = useState<SpatialSelection>();
+  const spatialView = useRef({ open: spatialOpen, selection: spatialSelection }); spatialView.current = { open: spatialOpen, selection: spatialSelection };
+  const boardInteraction = useRef<BoardInteractionAdapter | undefined>(undefined), spatialAdapter = useRef<SpatialInteractionAdapter | undefined>(undefined);
+  const spatialPaints = useRef(new Set<{ key: string; resolve: (ready:boolean)=>void; timer:ReturnType<typeof setTimeout> }>());
+  const spatialKey = (value: SpatialSelection) => `${value.modelId}:${value.assetVersion}:${[...value.partIds].sort().join(',')}`;
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [text, setText] = useState(''); const [tab, setTab] = useState<'conversation' | 'concepts' | 'cards'>('conversation'); const [mobileTab, setMobileTab] = useState<'board' | 'study'>('board');
   const [capabilities, setCapabilities] = useState<Capabilities>({ tutor: false, speech: false, voice: false }); const [flipped, setFlipped] = useState<Set<string>>(new Set()); const [speakingId, setSpeakingId] = useState<string>(); const [speechLoading, setSpeechLoading] = useState(false); const [saved, setSaved] = useState(false);
   const sessionRef = useRef<Session | undefined>(undefined), draftRef = useRef<Board | undefined>(undefined), draftBase = useRef<Board | undefined>(undefined), savingBoard = useRef(false), adapter = useRef<BoardAdapter | undefined>(undefined);
@@ -39,7 +52,7 @@ export function Workspace({ id }: { id: string }) {
   }, [receiveBoard]);
   const receiveMap = useCallback((map: ConceptMap) => { if (!sessionRef.current || (sessionRef.current.conceptMap?.revision ?? -1) > map.revision) return; sessionRef.current = { ...sessionRef.current, conceptMap: map }; setSession(sessionRef.current); }, []);
   const boardReady = useCallback((revision: number, focusKey?: string) => { painted.current = revision; for (const waiter of paints.current) if (waiter.revision === revision && waiter.focusKey === focusKey) { clearTimeout(waiter.timer); waiter.resolve(true); paints.current.delete(waiter); } }, []);
-  const prepareBoard = useCallback((board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[]) => {
+  const prepareBoard = useCallback((board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[], spatialState?: SpatialSelection, visualSurface?: 'board' | 'spatial') => {
     if (!beatId) { receiveBoard(board); if (map) receiveMap(map); return Promise.resolve(true); }
     // Keep a queued visual cancellable until the browser is about to paint it.
     return new Promise<boolean>(resolve => {
@@ -49,18 +62,35 @@ export function Workspace({ id }: { id: string }) {
         if (signal?.aborted) { done(false); return; }
         receiveBoard(board); if (map) receiveMap(map);
         if (draftRef.current) { done(false); return; }
-        setBoardFocus({ key: beatId, revision: board.revision ?? 0, ids: focusIds ?? [] });
+        const targetSpatial = spatialState ?? (visualSurface === 'spatial' && spatialView.current.open ? spatialView.current.selection ?? sessionRef.current?.spatialState : undefined);
+        if (targetSpatial) {
+          const waiter = { key: spatialKey(targetSpatial), resolve: done, timer: setTimeout(() => { spatialPaints.current.delete(waiter); done(false); }, 2200) };
+          spatialPaints.current.add(waiter); setSpatialReadyKey(beatId); setSpatialSelection(targetSpatial); setSpatialOpen(true); setMobileTab('board');
+          if (sessionRef.current) { sessionRef.current = {...sessionRef.current, spatialState: targetSpatial, visualSurface: 'spatial'}; setSession(sessionRef.current); }
+          return;
+        }
+        setSpatialOpen(false); setBoardFocus({ key: beatId, revision: board.revision ?? 0, ids: focusIds ?? [] });
         const waiter = { revision: board.revision ?? 0, focusKey: beatId, resolve: done, timer: setTimeout(() => { paints.current.delete(waiter); done(false); }, 2200) };
         paints.current.add(waiter);
       });
-      const abort = () => { cancelAnimationFrame(frame); for (const waiter of paints.current) if (waiter.resolve === done) { clearTimeout(waiter.timer); paints.current.delete(waiter); } done(false); };
+      const abort = () => { cancelAnimationFrame(frame); for (const waiter of paints.current) if (waiter.resolve === done) { clearTimeout(waiter.timer); paints.current.delete(waiter); } for (const waiter of spatialPaints.current) if (waiter.resolve === done) { clearTimeout(waiter.timer); spatialPaints.current.delete(waiter); } done(false); };
       signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort();
     });
   }, [receiveBoard, receiveMap]);
-  const voice = useVoiceSession(id, receiveSession, session?.board.nodes.some(node => node.id === selectedId) ? selectedId : undefined, session?.status === 'ended', draft ? undefined : selection, prepareBoard, receiveMap);
-  const load = useCallback(async () => { setLoading(true); setError(''); try { const value = await api.session(id); draftRef.current = undefined; draftBase.current = undefined; setDraft(undefined); setConflict(false); sessionRef.current = value; setSession(value); } catch (e) { setError(errorText(e)); } finally { setLoading(false); } }, [id]);
+  const questionSelection = useMemo<SelectionContext | undefined>(() => spatialOpen && spatialSelection ? { shapeIds: [], conceptIds: [], boardRevision: session?.board.revision ?? 0, spatial: spatialSelection } : selection, [spatialOpen, spatialSelection, session?.board.revision, selection]);
+  const voice = useVoiceSession(id, receiveSession, spatialOpen ? undefined : session?.board.nodes.some(node => node.id === selectedId) ? selectedId : undefined, session?.status === 'ended', draft ? undefined : questionSelection, prepareBoard, receiveMap);
+  const spatialReady = useCallback((modelId:string,assetVersion:string,ready:boolean,partIds:string[] = []) => { const key = `${modelId}:${assetVersion}:${[...partIds].sort().join(',')}`; for(const waiter of spatialPaints.current) if(waiter.key===key) { clearTimeout(waiter.timer); waiter.resolve(ready); spatialPaints.current.delete(waiter); } }, []);
+  function gestureAction(action: GestureAction) {
+    if (action.type === 'draw.end' || action.type === 'lost') { boardInteraction.current?.gesture(action); return; }
+    if (action.type === 'help') { setText(spatialOpen ? 'Please explain the selected model part.' : 'Please explain this selected idea.'); setTab('conversation'); setMobileTab('study'); return; }
+    if (!spatialOpen) { boardInteraction.current?.gesture(action); return; }
+    if (action.type === 'rotate') spatialAdapter.current?.orbit(action.delta.x,action.delta.y);
+    else if (action.type === 'zoom') spatialAdapter.current?.zoom(action.factor);
+    else if (action.type === 'select') spatialAdapter.current?.selectAt(action.point.x,action.point.y);
+  }
+  const load = useCallback(async () => { setLoading(true); setError(''); try { const value = await api.session(id); draftRef.current = undefined; draftBase.current = undefined; setDraft(undefined); setConflict(false); sessionRef.current = value; setSession(value); if(value.spatialState) {setSpatialSelection(value.spatialState);setSpatialOpen(value.visualSurface !== 'board');} } catch (e) { setError(errorText(e)); } finally { setLoading(false); } }, [id]);
   useEffect(() => { void load(); void api.health().then(setCapabilities).catch(() => {}); }, [load]);
-  useEffect(() => () => { for (const waiter of paints.current) { clearTimeout(waiter.timer); waiter.resolve(false); } paints.current.clear(); }, []);
+  useEffect(() => () => { for (const waiter of paints.current) { clearTimeout(waiter.timer); waiter.resolve(false); } paints.current.clear(); for(const waiter of spatialPaints.current) {clearTimeout(waiter.timer);waiter.resolve(false);} spatialPaints.current.clear(); }, []);
   const stopSpeech = useCallback(() => { speechEpoch.current++; audio.current?.pause(); audio.current = null; if (audioUrl.current) URL.revokeObjectURL(audioUrl.current); audioUrl.current = null; setSpeakingId(undefined); setSpeechLoading(false); }, []);
   useEffect(() => () => { speechEpoch.current++; audio.current?.pause(); if (audioUrl.current) URL.revokeObjectURL(audioUrl.current); }, []);
   useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [session?.messages.length, busy]);
@@ -94,13 +124,15 @@ export function Workspace({ id }: { id: string }) {
   async function send(value = text) {
     if (!value.trim() || busy || draftRef.current || session?.status === 'ended') return;
     stopSpeech(); setError('');
-    if (voice.connected) { if (voice.runtime.text(value.trim(), selectedId, selection)) { setText(''); setMobileTab('study'); } else setError('Voice disconnected before sending. Retry your question.'); return; }
+    if (voice.connected) { if (voice.runtime.text(value.trim(), spatialOpen ? undefined : selectedId, questionSelection)) { setText(''); setMobileTab('study'); } else setError('Voice disconnected before sending. Retry your question.'); return; }
     setBusy(true); const previous = text, before = sessionRef.current; setText('');
     try {
-      const reply = await api.message(id, value.trim(), selectedId, selection);
+      const reply = await api.message(id, value.trim(), spatialOpen ? undefined : selectedId, questionSelection);
       const newBeat = [...(reply.teachingBeats ?? [])].reverse().find(beat => !before?.teachingBeats?.some(old => old.beatId === beat.beatId) && beat.highlightNodeIds.length > 0);
       const ids = newBeat?.highlightNodeIds ?? (before ? boardDiff(before.board, reply.board).flatMap(command => command.type === 'upsert_node' ? [command.node.id] : []) : []);
       receiveSession(reply);
+      const visualBeat = [...(reply.teachingBeats ?? [])].reverse().find(beat => !before?.teachingBeats?.some(old => old.beatId === beat.beatId) && (beat.spatialUpdate || beat.boardCommands.length || beat.highlightNodeIds.length));
+      if (visualBeat?.spatialUpdate) { setSpatialSelection(visualBeat.spatialUpdate); setSpatialOpen(true); } else if (ids.length || visualBeat) setSpatialOpen(false);
       if (ids.length) setBoardFocus({ key: `reply-${reply.revision}`, revision: reply.board.revision ?? 0, ids });
       setMobileTab('study');
     } catch (e) { setText(previous || value); setError(errorText(e)); } finally { setBusy(false); }
@@ -116,7 +148,7 @@ export function Workspace({ id }: { id: string }) {
   if (loading || !session) return <div className="workspace-loading"><header><Brand /><Link className="subtle-button" href="/"><ArrowLeft size={16}/> Back to your space</Link></header><main id="main"><Mark/><h1>{loading ? 'Making room for a new idea…' : 'Let’s reconnect.'}</h1>{loading ? <span className="spinner"/> : <><p role="alert">{error || 'This lesson is not available.'}</p><button className="primary-button" onClick={() => void load()}><RefreshCw size={16}/> Try again</button></>}</main></div>;
   return <div className="workspace" style={{ '--study-width': `${studyWidth}px` } as React.CSSProperties}><header className="workspace-topbar"><Brand /><div className="workspace-title"><span>{topic?.subject} <span> / </span> {ended ? 'Your study notes' : 'Learning session'}</span><strong>{session.title}</strong></div><div className="workspace-top-actions"><span className={`lesson-mode ${session.mode}`}><span/>{session.mode === 'sample' ? 'Guided sample' : 'Live AI'}</span><Link className="icon-button" href="/" aria-label="Back to your learning space"><X size={21}/></Link></div></header>
     <main id="main" className="workspace-main"><div className="workspace-mobile-tabs"><button aria-pressed={mobileTab === 'board'} onClick={() => setMobileTab('board')}><Layers3 size={15}/> Whiteboard</button><button aria-pressed={mobileTab === 'study'} onClick={() => setMobileTab('study')}><MessageCircle size={15}/> Study tools</button></div>
-      <section className={`board-section ${mobileTab === 'board' ? 'mobile-active' : ''}`}><div className="board-heading"><div><span className="eyebrow">FOLLOW THE CONNECTIONS</span><h1>Let’s see the bigger picture.</h1>{session.lessonFocus && <p className="lesson-focus"><strong>{session.lessonFocus.goal}</strong><span>{session.lessonFocus.nextStep}</span></p>}</div><span className="board-chip"><span/> Your whiteboard</span></div>{conflict && <div className="board-conflict" role="status">Your edits overlap a newer board change. They are still here.<div><button className="subtle-button" onClick={() => void reviewConflict()}>Review and keep my edits</button><button className="subtle-button" onClick={() => void load()}>Discard and load latest</button></div></div>}<ConceptBoard board={draft || session.board} selectedId={selectedId} selectedIds={selection?.shapeIds} onSelect={setSelectedId} onSelection={setSelection} onChange={changeBoard} readOnly={busy || ended} onReady={boardReady} adapterRef={adapter} highlightIds={voice.highlightNodeIds} focusRequest={boardFocus} onExplain={!ended ? () => { setText('Please explain this selected idea.'); setTab('conversation'); setMobileTab('study'); } : undefined} onShare={!ended && session.mode === 'live' ? shareDrawing : undefined}/><div className="board-bottom"><div className="board-caption"><Lightbulb size={17}/><span>{voice.connected ? 'Draw and arrange while you talk. Save to share your changes.' : 'Select an idea. Ask a question. Make it yours.'}</span></div>{draft ? <div className="board-save"><span>Unsaved changes</span><button className="subtle-button" disabled={busy} onClick={() => void load()}><RotateCcw size={14}/> Discard</button><button className="small-button" disabled={busy || conflict} onClick={() => void saveBoard()}><Save size={14}/>{busy ? 'Saving…' : 'Save board'}</button></div> : <span className="saved-indicator"><Check size={13}/>{saved ? 'Changes saved' : 'Saved to your lesson'}</span>}</div>
+      <section className={`board-section ${mobileTab === 'board' ? 'mobile-active' : ''}`}><div className="board-heading"><div><span className="eyebrow">FOLLOW THE CONNECTIONS</span><h1>Let’s see the bigger picture.</h1>{session.lessonFocus && <p className="lesson-focus"><strong>{session.lessonFocus.goal}</strong><span>{session.lessonFocus.nextStep}</span></p>}</div><span className="board-chip"><span/> Your whiteboard</span></div>{conflict && <div className="board-conflict" role="status">Your edits overlap a newer board change. They are still here.<div><button className="subtle-button" onClick={() => void reviewConflict()}>Review and keep my edits</button><button className="subtle-button" onClick={() => void load()}>Discard and load latest</button></div></div>}<div className="workspace-visual-actions"><button className="small-button" onClick={() => { setSpatialOpen(value => !value); setSpatialSelection(value => value ?? session.spatialState ?? {modelId: session.topic === 'solar-system' ? 'solar-system' : 'chloroplast', assetVersion: '1.0.0', partIds: []}); }}>{spatialOpen ? 'Close 3D model' : '3D models'}</button></div><GestureControls onAction={gestureAction} disabled={ended} spatial={spatialOpen}/>{spatialOpen && <SpatialViewer readinessKey={spatialReadyKey} selection={spatialSelection} topic={session.topic} onSelection={setSpatialSelection} onReady={spatialReady} adapterRef={spatialAdapter} disabled={busy} onExplain={() => gestureAction({type:'help'})}/>}<div className={spatialOpen ? "board-behind-spatial" : "board-active-view"}><ConceptBoard board={draft || session.board} selectedId={selectedId} selectedIds={selection?.shapeIds} onSelect={setSelectedId} onSelection={setSelection} onChange={changeBoard} readOnly={busy || ended} onReady={boardReady} adapterRef={adapter} interactionRef={boardInteraction} highlightIds={voice.highlightNodeIds} focusRequest={boardFocus} onExplain={!ended ? () => { setText('Please explain this selected idea.'); setTab('conversation'); setMobileTab('study'); } : undefined} onShare={!ended && session.mode === 'live' ? shareDrawing : undefined}/></div><div className="board-bottom"><div className="board-caption"><Lightbulb size={17}/><span>{voice.connected ? 'Draw and arrange while you talk. Save to share your changes.' : 'Select an idea. Ask a question. Make it yours.'}</span></div>{draft ? <div className="board-save"><span>Unsaved changes</span><button className="subtle-button" disabled={busy} onClick={() => void load()}><RotateCcw size={14}/> Discard</button><button className="small-button" disabled={busy || conflict} onClick={() => void saveBoard()}><Save size={14}/>{busy ? 'Saving…' : 'Save board'}</button></div> : <span className="saved-indicator"><Check size={13}/>{saved ? 'Changes saved' : 'Saved to your lesson'}</span>}</div>
       {ended && <section className="summary-panel"><div className="summary-title"><span className="summary-icon"><CheckCircle2 size={20}/></span><div><span className="eyebrow">A LITTLE MORE UNDERSTANDING</span><h2>Your lesson, collected.</h2></div><button className="subtle-button" onClick={() => downloadSummary(session)}><Download size={15}/> Download notes</button></div><div className="summary-text">{session.summary || 'Your conversation, concepts and flashcards are saved. You can return to them any time.'}</div></section>}
       </section>
       <div className="workspace-splitter" role="separator" tabIndex={0} aria-label="Resize study panel" aria-orientation="vertical" aria-valuemin={300} aria-valuemax={600} aria-valuenow={studyWidth} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setStudyWidth(value => Math.max(300, Math.min(600, value + (event.key === 'ArrowLeft' ? 20 : -20)))); } }} onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setStudyWidth(Math.max(300, Math.min(600, window.innerWidth - event.clientX))); }} onPointerUp={event => event.currentTarget.releasePointerCapture(event.pointerId)}/>

@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { SpatialSelectionSchema } from './spatial';
 import { BoardSchema, SelectionContextSchema, ConceptMapSchema, TeachingBeatSchema, LessonFocusSchema } from './scene';
 export * from './scene';
+export * from './spatial';
 
 export const TopicSchema = z.enum(['photosynthesis', 'fractions', 'solar-system', 'circuits']);
 export type Topic = z.infer<typeof TopicSchema>;
@@ -13,7 +15,7 @@ export const SessionSchema = z.object({
   status: z.enum(['active', 'ended']), createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
   revision: z.number().int().nonnegative(), messages: z.array(MessageSchema), board: BoardSchema,
   concepts: z.array(ConceptSchema), flashcards: z.array(FlashcardSchema), summary: z.string().optional(),
-  conceptMap: ConceptMapSchema.optional(), teachingBeats: z.array(TeachingBeatSchema).max(200).optional(), lessonFocus: LessonFocusSchema.optional(),
+  visualSurface: z.enum(['board','spatial']).optional(), spatialState: SpatialSelectionSchema.optional(), conceptMap: ConceptMapSchema.optional(), teachingBeats: z.array(TeachingBeatSchema).max(200).optional(), lessonFocus: LessonFocusSchema.optional(),
   boardOperations: z.array(z.object({ operationId: z.string().max(100), hash: z.string().max(128), revision: z.number().int().nonnegative() })).max(100).optional()
 });
 export type Session = z.infer<typeof SessionSchema>;

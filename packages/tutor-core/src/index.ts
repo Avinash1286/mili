@@ -4,3 +4,4 @@ export { TutorError, type TutorInput, type TutorReply, type GenerateReply, type 
 export { generateTutorReply } from './provider.js';
 export { validateTeachingPlan, normalizeTeachingReply, plainTeachingBeat, splitTeachingText, projectTeachingProposal } from './teaching.js';
 export { generateVisionExplanation, validateVisionImage, VisionError, type VisionInput } from './vision.js';
+export { groundSpatialSelection } from './spatial.js';

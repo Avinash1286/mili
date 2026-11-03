@@ -1,0 +1,3 @@
+# Preserve upstream asset bytes and whitespace for checksum verification.
+apps/web/public/vendor/mediapipe/** -text -whitespace
+apps/web/public/models/*.glb -text

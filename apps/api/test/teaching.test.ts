@@ -44,6 +44,47 @@ describe('durable teaching and board operations', () => {
     expect(saved.conceptMap?.nodes.length).toBeGreaterThan(0);
     expect(saved.messages.at(-1)?.delivery).toBeUndefined();
   });
+  it('persists a prepared sample model and answers selected parts from the trusted catalog', async () => {
+    const session = await create();
+    const shown = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Show a 3D model' } });
+    expect(shown.statusCode).toBe(200);
+    expect(shown.json().session.spatialState).toEqual({ modelId: 'chloroplast', assetVersion: '1.0.0', partIds: [] });
+    const spatial = { modelId: 'chloroplast', assetVersion: '1.0.0', partIds: ['thylakoid'] };
+    const selected = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Explain this part', selection: { shapeIds: [], conceptIds: [], boardRevision: 0, spatial } } });
+    expect(selected.statusCode).toBe(200);
+    const saved = await get(session.id);
+    expect(saved.spatialState).toEqual(spatial);
+    expect(saved.visualSurface).toBe('spatial');
+    expect(saved.messages.at(-1)?.text).toContain('Prepared sample model');
+    expect(saved.messages.at(-1)?.text).toContain('Thylakoid');
+    expect(saved.teachingBeats?.at(-1)?.warnings ?? []).toEqual([]);
+  });
+  it('switches a sample lesson from its model to a requested diagram while preserving the saved model', async () => {
+    const session = await create();
+    const spatial = { modelId: 'chloroplast', assetVersion: '1.0.0', partIds: ['thylakoid'] };
+    await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Explain this part', selection: { shapeIds: [], conceptIds: [], boardRevision: 0, spatial } } });
+    const plain = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Hello' } });
+    expect(plain.json().session.visualSurface).toBe('spatial');
+    const result = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Show a diagram on the board', selection: { shapeIds: [], conceptIds: [], boardRevision: 0, spatial } } });
+    expect(result.statusCode).toBe(200);
+    const saved = await get(session.id);
+    expect(saved.visualSurface).toBe('board');
+    expect(saved.spatialState).toEqual(spatial);
+    expect(saved.teachingBeats?.at(-1)?.spatialUpdate).toBeUndefined();
+    expect(saved.board.frames?.length).toBeGreaterThan(0);
+    const continued = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Hello' } });
+    expect(continued.json().session.visualSurface).toBe('board');
+  });
+  it('rejects invalid spatial selections before provider work or history changes', async () => {
+    const session = await create('live');
+    const called = vi.fn(async () => ({ text: 'This must not run.' })); tutor = called;
+    for (const spatial of [{ modelId: 'chloroplast', assetVersion: '1.0.0', partIds: ['aorta'] }, { modelId: 'chloroplast', assetVersion: 'outdated', partIds: [] }, { modelId: 'unapproved', assetVersion: '1.0.0', partIds: [] }]) {
+      const response = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/messages`, headers: headers(), payload: { text: 'Explain this part', selection: { shapeIds: [], conceptIds: [], boardRevision: 0, spatial } } });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(called).not.toHaveBeenCalled();
+    expect((await get(session.id)).messages).toEqual(session.messages);
+  });
   it('preserves a concurrent student edit when a model visual plan was based on an old board revision', async () => {
     const session = await create('live'); let resolve!: (value: TutorReply) => void;
     tutor = async () => new Promise(done => { resolve = done; });

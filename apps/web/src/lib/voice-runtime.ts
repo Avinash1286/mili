@@ -1,4 +1,4 @@
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext } from '@tokai/contracts';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection } from '@tokai/contracts';
 import { api, errorText, RequestError, voiceSocketUrl } from './api';
 
 export type VoiceView = {
@@ -30,11 +30,11 @@ export class VoiceRuntime {
   private selection?: SelectionContext;
   private beats = new Map<string, { text: string; messageId: string; highlightNodeIds: string[] }>();
   private readyBeats = new Set<string>();
-  private displayedBoard?: Board; private displayedMap?: ConceptMap;
+  private displayedBoard?: Board; private displayedMap?: ConceptMap; private displayedSpatial?: SpatialSelection; private displayedSurface?: 'board' | 'spatial';
   private visualPrepares = new Map<string, AbortController>();
   private boardRequests = new Map<string, { resolve: (board: Board) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   onSession: (session: Session) => void = () => {};
-  onBoard: (board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[]) => Promise<boolean> = async () => false;
+  onBoard: (board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[], spatialState?: SpatialSelection, visualSurface?: 'board' | 'spatial') => Promise<boolean> = async () => false;
   onMap: (map: ConceptMap) => void = () => {};
   constructor(private readonly sessionId: string) {}
   getSnapshot = () => this.view;
@@ -203,13 +203,13 @@ export class VoiceRuntime {
     switch (event.type) {
       case 'session.ready':
         this.connectionId = event.connectionId; this.epoch = event.outputEpoch; this.playback?.port.postMessage({ type: 'clear', epoch: this.epoch }); clearTimeout(this.connectTimer);
-        this.displayedBoard = event.session.board; this.displayedMap = event.session.conceptMap;
+        this.displayedBoard = event.session.board; this.displayedMap = event.session.conceptMap; this.displayedSpatial = event.session.spatialState; this.displayedSurface = event.session.visualSurface;
         this.onSession(event.session); this.update({ connected: true, state: 'listening', error: '' }); this.select(this.selectedNodeId, this.selection);
         this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 15000); break;
       case 'session.snapshot': {
         // Live patches own visual application. A history/delivery snapshot must
         // never bypass a pending renderer gate, even if it arrives first.
-        this.onSession({ ...event.session, board: this.displayedBoard ?? event.session.board, conceptMap: this.displayedMap });
+        this.onSession({ ...event.session, board: this.displayedBoard ?? event.session.board, conceptMap: this.displayedMap, spatialState: this.displayedSpatial, visualSurface: this.displayedSurface });
         break;
       }
       case 'board.patch': {
@@ -220,10 +220,10 @@ export class VoiceRuntime {
         const prepare = new AbortController(); if (event.beatId) this.visualPrepares.set(event.beatId, prepare);
         const highlighted = this.beats.get(event.beatId ?? '')?.highlightNodeIds.filter(id => event.board.nodes.some(node => node.id === id)) ?? [];
         const focusIds = event.beatId ? highlighted.length ? highlighted : event.board.nodes.filter(node => !this.displayedBoard?.nodes.some(previous => previous.id === node.id)).map(node => node.id) : undefined;
-        void this.onBoard(event.board, event.beatId, prepare.signal, event.map, focusIds).catch(() => false).then(ready => {
+        void this.onBoard(event.board, event.beatId, prepare.signal, event.map, focusIds, event.spatialState, event.visualSurface).catch(() => false).then(ready => {
           if (generation !== this.generation || epoch !== this.epoch || epoch <= this.blockedEpoch || !event.beatId) return;
           this.displayedBoard = event.board;
-          if (event.map) this.displayedMap = event.map;
+          if (event.map) this.displayedMap = event.map; if(event.spatialState) this.displayedSpatial = event.spatialState; if(event.visualSurface) this.displayedSurface = event.visualSurface;
           if (ready) { this.readyBeats.add(event.beatId); for (const [streamId, stream] of this.streams) if (stream.beatId === event.beatId && stream.epoch === epoch) this.playback?.port.postMessage({ type: 'release', epoch, streamId }); }
           this.send({ type: 'board.ready', beatId: event.beatId, boardRevision: event.board.revision ?? 0, outputEpoch: epoch, ready });
         }).finally(() => { if (event.beatId && this.visualPrepares.get(event.beatId) === prepare) this.visualPrepares.delete(event.beatId); });

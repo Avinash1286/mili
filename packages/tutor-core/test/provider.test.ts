@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { generateContent } = vi.hoisted(() => ({ generateContent: vi.fn() }));
 vi.mock('@google/genai', () => ({ GoogleGenAI: class { models = { generateContent }; }, FunctionCallingConfigMode: { VALIDATED: 'VALIDATED' } }));
 import { createLesson, generateTutorReply } from '../src/index.js';
+import { getSpatialModel } from '@tokai/contracts';
 
 const input = () => ({
   session: createLesson({ id: 'lesson', topic: 'photosynthesis', mode: 'live', now: '2026-11-03T12:00:00.000Z', messageId: 'intro' }),
@@ -73,6 +74,57 @@ describe('live tutor provider boundary', () => {
     expect(history[1]).toBe(first.candidates[0]!.content);
     expect(history[1].parts[0].thoughtSignature).toBe('opaque-signature');
     expect(history[2].parts[0].functionResponse).toMatchObject({ id: 'function-1', name: 'draw_shapes' });
+  });
+  it('stages approved model parts in a validated teaching beat without mutating the lesson', async () => {
+    const request = input(), before = JSON.stringify(request.session);
+    const spatial = { modelId: 'chloroplast', assetVersion: '1.0.0', partIds: ['thylakoid'] };
+    generateContent.mockResolvedValue(response([{ name: 'show_model', args: spatial }, { ...submit, args: { ...submit.args, conceptIds: ['thylakoid'] } }]));
+    const result = await generateTutorReply(request);
+    expect(result.beats?.[0]?.spatialUpdate).toEqual(spatial);
+    expect(result.diagnostics).toMatchObject({ modelCalls: 1, toolCalls: 2, textOnlyFallback: false, tools: ['show_model', 'submit_teaching_beat'] });
+    expect(JSON.stringify(request.session)).toBe(before);
+  });
+  it('grounds model selections in canonical descriptions and anchors their first teaching beat', async () => {
+    const spatial = { modelId: 'chloroplast' as const, assetVersion: '1.0.0', partIds: ['thylakoid'] };
+    generateContent.mockResolvedValue(response([{ ...submit, args: { ...submit.args, conceptIds: ['thylakoid'] } }]));
+    const result = await generateTutorReply({ ...input(), selection: { shapeIds: [], conceptIds: [], boardRevision: 99, spatial } });
+    const context = JSON.parse(generateContent.mock.calls[0]![0].contents[0].parts[0].text);
+    expect(context.selectedModel.parts).toEqual([{ id: 'thylakoid', label: 'Thylakoid membrane', description: getSpatialModel('chloroplast')!.parts.find(part => part.id === 'thylakoid')!.description, conceptIds: ['thylakoid'] }]);
+    expect(context.selectedModel.scaleNote).toContain('not drawn to scale');
+    expect(context.selectedObjects).toEqual([]);
+    expect(result.beats?.[0]?.spatialUpdate).toEqual(spatial);
+  });
+  it('rejects invalid selected model parts and versions before calling Gemini', async () => {
+    for (const spatial of [{ modelId: 'chloroplast' as const, assetVersion: '1.0.0', partIds: ['aorta'] }, { modelId: 'chloroplast' as const, assetVersion: 'old-version', partIds: ['stroma'] }]) {
+      await expect(generateTutorReply({ ...input(), selection: { shapeIds: [], conceptIds: [], boardRevision: 0, spatial } })).rejects.toMatchObject({ code: 'INVALID_SPATIAL_SELECTION', status: 400 });
+    }
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+  it('does not reopen a selected model over a requested board diagram or highlight', async () => {
+    const selection = { shapeIds: [], conceptIds: [], boardRevision: 0, spatial: { modelId: 'chloroplast' as const, assetVersion: '1.0.0', partIds: ['thylakoid'] } };
+    for (const visual of [draw, { name: 'highlight_concepts', args: { shapeIds: ['light'] } }]) {
+      generateContent.mockResolvedValue(response([visual, submit]));
+      const result = await generateTutorReply({ ...input(), text: 'Show the idea on the board', selection });
+      expect(result.beats?.[0]?.spatialUpdate).toBeUndefined();
+      expect(result.diagnostics?.textOnlyFallback).toBe(false);
+    }
+  });
+  it('rejects unapproved model tool arguments without publishing a model or narrating success', async () => {
+    generateContent.mockResolvedValue(response([{ name: 'show_model', args: { modelId: 'chloroplast', assetVersion: '1.0.0', partIds: ['aorta'], assetUrl: 'https://untrusted.invalid/model.glb' } }, submit]));
+    const result = await generateTutorReply({ ...input(), limits: { maxModelCalls: 1, maxRepairAttempts: 0 } });
+    expect(result.beats?.every(beat => !beat.spatialUpdate)).toBe(true);
+    expect(result.diagnostics?.textOnlyFallback).toBe(true);
+    expect(result.text).toContain('No visual changes were applied');
+    expect(JSON.stringify(result)).not.toContain('untrusted.invalid');
+  });
+  it('drops a late model response when the cancelled provider ignored its abort signal', async () => {
+    let complete!: (value: unknown) => void;
+    generateContent.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    const controller = new AbortController(), pending = generateTutorReply({ ...input(), signal: controller.signal });
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'TUTOR_CANCELLED', diagnostics: { toolCalls: 0 } });
+    controller.abort();
+    complete(response([{ name: 'show_model', args: { modelId: 'chloroplast', assetVersion: '1.0.0', partIds: ['stroma'] } }, submit]));
+    await rejected;
   });
   it('allows one repair, protects student shapes, and cannot narrate rejected drawing as successful', async () => {
     const request = input(); request.session.board.nodes[0]!.author = 'student';
