@@ -17,7 +17,7 @@ export const BoardSchema = z.object({ nodes: z.array(BoardNodeSchema).max(40), e
 });
 export type Board = z.infer<typeof BoardSchema>;
 export type BoardNode = z.infer<typeof BoardNodeSchema>;
-export const MessageSchema = z.object({ id: z.string(), role: z.enum(['student', 'tutor']), text: z.string().max(12000), createdAt: z.string().datetime() });
+export const MessageSchema = z.object({ id: z.string(), role: z.enum(['student', 'tutor']), text: z.string().max(12000), createdAt: z.string().datetime(), turnId: z.string().max(150).optional(), delivery: z.enum(['generated', 'playing', 'completed', 'interrupted', 'failed']).optional(), playedMs: z.number().nonnegative().optional() });
 export const ConceptSchema = z.object({ id: z.string(), label: z.string(), status: z.enum(['introduced', 'practicing', 'needs-help', 'understood']) });
 export const FlashcardSchema = z.object({ id: z.string(), front: z.string(), back: z.string(), conceptId: z.string() });
 export const SessionSchema = z.object({
@@ -33,10 +33,12 @@ export const UpdateBoardSchema = z.object({ board: BoardSchema, revision: z.numb
 export const SpeechRequestSchema = z.object({ messageId: z.string().min(1).max(100) });
 export const GuestResponseSchema = z.object({ token: z.string(), expiresAt: z.string().datetime() });
 export type GuestResponse = z.infer<typeof GuestResponseSchema>;
-export const CapabilitiesSchema = z.object({ tutor: z.boolean(), speech: z.boolean() });
+export const CapabilitiesSchema = z.object({ tutor: z.boolean(), speech: z.boolean(), voice: z.boolean().default(false) });
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 export const ErrorResponseSchema = z.object({ code: z.string(), message: z.string(), requestId: z.string().optional() });
 export type ApiError = z.infer<typeof ErrorResponseSchema>;
+
+export * from './voice';
 
 export const TOPICS: { id: Topic; title: string; subject: string; description: string; duration: string }[] = [
   { id: 'photosynthesis', title: 'How plants make their food', subject: 'Biology', description: 'Follow sunlight from a leaf to a little packet of energy.', duration: '12 min' },

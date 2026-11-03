@@ -8,5 +8,7 @@
     "./epochs": "./src/epochs.ts",
     "./timing": "./src/timing.ts"
   },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" }
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": { "ws": "8.22.1" },
+  "devDependencies": { "@types/ws": "8.18.1" }
 }

@@ -11,6 +11,7 @@ test('guest can learn, edit and save the board, review cards and finish a sample
   await expect(page).toHaveURL(/\/learn\//);
   await expect(page.getByText('SAMPLE LESSON', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Editable concept board')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start voice', exact: true })).toBeDisabled();
 
   const node = page.locator('.board-node').first();
   await node.click();

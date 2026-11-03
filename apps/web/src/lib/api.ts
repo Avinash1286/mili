@@ -1,12 +1,12 @@
-import { GuestResponseSchema, SessionSchema, CapabilitiesSchema, type Session, type Topic, type Board } from '@tokai/contracts';
+import { GuestResponseSchema, SessionSchema, CapabilitiesSchema, VoiceTicketSchema, type Session, type Topic, type Board } from '@tokai/contracts';
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 const KEY = 'tokai.guest.v1';
 let pendingGuest: Promise<string> | undefined;
 
-export class RequestError extends Error { constructor(message: string, public status: number) { super(message); } }
+export class RequestError extends Error { constructor(message: string, public status: number, public code?: string) { super(message); } }
 async function responseData(response: Response) {
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new RequestError(data.message || data.error?.message || 'Something went wrong. Please try again.', response.status);
+  if (!response.ok) throw new RequestError(data.message || data.error?.message || 'Something went wrong. Please try again.', response.status, data.code || data.error?.code);
   return data;
 }
 export async function guestToken(): Promise<string> {
@@ -22,6 +22,7 @@ async function request(path: string, options: RequestInit = {}) {
   return response.status === 204 ? null : responseData(response);
 }
 export const api = {
+  async voiceTicket(id: string, signal?: AbortSignal) { return VoiceTicketSchema.parse(await request(`/v1/sessions/${encodeURIComponent(id)}/voice-ticket`, { method: 'POST', body: '{}', signal })); },
   async health() { const data = await responseData(await fetch(`${API}/health/live`, { signal: AbortSignal.timeout(5000) })); return CapabilitiesSchema.parse(data.providers); },
   async list(): Promise<Session[]> { const data = await request('/v1/sessions'); return data.sessions.map((s: unknown) => SessionSchema.parse(s)); },
   async create(topic: Topic, mode: 'sample' | 'live') { const data = await request('/v1/sessions', { method: 'POST', body: JSON.stringify({ topic, mode }) }); return SessionSchema.parse(data.session); },
@@ -32,6 +33,7 @@ export const api = {
   async remove(id: string) { await request(`/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async speech(id: string, messageId: string) { const token = await guestToken(); const response = await fetch(`${API}/v1/sessions/${encodeURIComponent(id)}/speech`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ messageId }) }); if (!response.ok) await responseData(response); return response.blob(); }
 };
+export function voiceSocketUrl(ticket: string) { const url = new URL(`${API}/v1/voice`); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.searchParams.set('ticket', ticket); return url.toString(); }
 export function errorText(error: unknown) { return error instanceof TypeError ? 'We couldn’t reach your learning workspace. Check that the server is running, then try again.' : error instanceof Error ? error.message : 'Something went wrong. Please try again.'; }
 export function downloadSummary(session: Session) {
   const text = `# ${session.title}\n\n${session.mode === 'sample' ? '> Guided sample lesson. Responses are prepared examples, not live AI.\n\n' : ''}${session.summary || '## Conversation\n\n' + session.messages.map(m => `**${m.role === 'tutor' ? 'Tutor' : 'You'}:** ${m.text}`).join('\n\n')}\n\n## Review cards\n\n${session.flashcards.map(c => `### ${c.front}\n\n${c.back}`).join('\n\n')}`;

@@ -8,6 +8,7 @@ import { CreateSessionSchema, SendMessageSchema, UpdateBoardSchema, SpeechReques
 import { createLesson, sampleReply, summarizeSession, generateTutorReply, TutorError, type GenerateReply } from '@tokai/tutor-core';
 import { synthesizeSpeech } from '@tokai/speech';
 import { ApiError, FileStore } from './store.js';
+import { VoiceManager, type VoiceOptions } from './voice.js';
 
 export type AppOptions = {
   dataDir?: string; now?: () => number; origin?: string;
@@ -15,6 +16,7 @@ export type AppOptions = {
   tutor?: GenerateReply;
   speech?: typeof synthesizeSpeech;
   rateLimit?: boolean;
+  voice?: VoiceOptions;
 };
 
 export async function createApp(options: AppOptions = {}) {
@@ -26,7 +28,8 @@ export async function createApp(options: AppOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024, requestTimeout: 35000, trustProxy: false });
   await app.register(cors, { origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000', methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] });
   if (options.rateLimit !== false) await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
-  const providers = () => ({ tutor: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL), speech: Boolean(env.ASSEMBLYAI_API_KEY) });
+  const providers = () => ({ tutor: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL), speech: Boolean(env.ASSEMBLYAI_API_KEY), voice: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL && env.ASSEMBLYAI_API_KEY) });
+  const voice = new VoiceManager({ store, env, now: clock, tutor: options.tutor ?? generateTutorReply, voice: options.voice, origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000' });
   const authenticate = (header: string | undefined) => store.authenticate(header?.startsWith('Bearer ') ? header.slice(7) : undefined);
   const now = () => new Date(clock()).toISOString();
   const bump = (session: Session) => { session.revision++; session.updatedAt = now(); return session; };
@@ -47,6 +50,7 @@ export async function createApp(options: AppOptions = {}) {
     if (status && status >= 400 && status < 500) return reply.status(status).send({ code: 'INVALID_REQUEST', message: 'The request could not be accepted.', requestId: request.id });
     return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'The server could not complete the request. Your saved lesson is unchanged.', requestId: request.id });
   });
+  await voice.register(app);
   app.get('/health/live', async () => ({ status: 'ok', providers: providers() }));
   app.post('/v1/guest-sessions', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (_request, reply) => reply.status(201).send(await store.createGuest()));
   app.get('/v1/sessions', async request => ({ sessions: await store.list(await authenticate(request.headers.authorization)) }));
@@ -71,6 +75,7 @@ export async function createApp(options: AppOptions = {}) {
     const input = parse(SendMessageSchema, request.body);
     return store.locked(request.params.id, async () => {
       const session = await store.get(principal, request.params.id); ensureActive(session);
+      voice.assertHttpAvailable(session.id);
       if (session.messages.length >= 201) throw new ApiError(429, 'TURN_LIMIT', 'This lesson has reached its message limit. Finish it and start a new lesson.');
       if (input.selectedNodeId && !session.board.nodes.some(node => node.id === input.selectedNodeId)) throw new ApiError(400, 'INVALID_SELECTION', 'The selected board item is no longer available. Select it again.');
       const result = session.mode === 'sample' ? { text: sampleReply(session, input.text, input.selectedNodeId) } : await live(session, input.text, input.selectedNodeId);
@@ -91,6 +96,8 @@ export async function createApp(options: AppOptions = {}) {
   });
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/end', async request => {
     const principal = await authenticate(request.headers.authorization);
+    await store.get(principal, request.params.id);
+    await voice.closeSession(request.params.id, 'Lesson ended');
     return store.locked(request.params.id, async () => {
       const session = await store.get(principal, request.params.id);
       if (session.status !== 'ended') { session.status = 'ended'; session.summary = summarizeSession(session); await store.save(principal, bump(session)); }
@@ -99,6 +106,8 @@ export async function createApp(options: AppOptions = {}) {
   });
   app.delete<{ Params: { id: string } }>('/v1/sessions/:id', async (request, reply) => {
     const principal = await authenticate(request.headers.authorization);
+    await store.get(principal, request.params.id);
+    await voice.closeSession(request.params.id, 'Lesson deleted');
     await store.locked(request.params.id, () => store.delete(principal, request.params.id)); return reply.status(204).send();
   });
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/speech', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -106,6 +115,7 @@ export async function createApp(options: AppOptions = {}) {
     const input = parse(SpeechRequestSchema, request.body);
     return store.locked(request.params.id, async () => {
       const session = await store.get(principal, request.params.id);
+      voice.assertHttpAvailable(session.id);
       const message = session.messages.find(message => message.id === input.messageId && message.role === 'tutor');
       if (!message) throw new ApiError(404, 'NOT_FOUND', 'Tutor message not found.');
       if (!env.ASSEMBLYAI_API_KEY) throw new ApiError(503, 'SPEECH_UNAVAILABLE', 'AssemblyAI speech is not configured on the server.');

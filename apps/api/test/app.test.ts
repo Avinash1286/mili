@@ -28,7 +28,7 @@ describe('guest lesson API', () => {
     return response.json<{ session: Session }>().session;
   }
   it('reports actual configured capabilities and never falls back from live to sample', async () => {
-    expect((await app.inject('/health/live')).json()).toEqual({ status: 'ok', providers: { tutor: false, speech: false } });
+    expect((await app.inject('/health/live')).json()).toEqual({ status: 'ok', providers: { tutor: false, speech: false, voice: false } });
     const { token } = await guest();
     const live = await app.inject({ method: 'POST', url: '/v1/sessions', headers: headers(token), payload: { topic: 'fractions', mode: 'live' } });
     expect(live.statusCode).toBe(503);

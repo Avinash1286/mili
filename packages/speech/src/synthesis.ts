@@ -8,16 +8,20 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 export const SPEECH_CAPABILITIES = Object.freeze({
   provider: 'assemblyai',
   httpSynthesis: true,
-  streamingSynthesis: false,
-  streamingTranscription: false,
+  streamingSynthesis: true,
+  streamingTranscription: true,
   liveWordTimings: false,
+  wordBoundaries: true,
+  wordBoundaryDelivery: 'after-flush',
+  credentialedStreamingVerified: false,
   defaultVoiceId: 'aai-audrey',
   region: 'us',
   maxTextCodePoints: MAX_TEXT_CODE_POINTS,
 } as const);
 
 export type SpeechErrorCode = 'invalid-input' | 'not-configured' | 'aborted' | 'timeout'
-  | 'authentication' | 'rate-limited' | 'provider-error' | 'invalid-audio' | 'audio-too-large';
+  | 'authentication' | 'rate-limited' | 'provider-error' | 'invalid-audio' | 'audio-too-large'
+  | 'protocol-error' | 'backpressure' | 'busy' | 'closed' | 'limit-exceeded';
 
 /** Safe to expose the message/code; never includes provider response bodies. */
 export class SpeechError extends Error {
