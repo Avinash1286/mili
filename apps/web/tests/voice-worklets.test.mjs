@@ -134,3 +134,20 @@ test('playback queues are bounded at eight seconds and provide paced progress ac
   assert.equal(progress.length, 1);
   assert.equal(progress[0].playedSamples, 4800);
 });
+test('visual readiness gates playback and cancellation invalidates an unreleased beat', () => {
+  const playback = processor('tokai-playback', 48000);
+  command(playback, { type: 'start', epoch: 0, streamId: 1, ready: false });
+  command(playback, { type: 'chunk', epoch: 0, streamId: 1, samples: new Int16Array(1000).fill(10000) });
+  command(playback, { type: 'end', epoch: 0, streamId: 1 });
+  assert.ok(render(playback)[0].every(sample => sample === 0));
+  assert.equal(playback.messages.filter(event => event.status === 'started').length, 0);
+  command(playback, { type: 'release', epoch: 0, streamId: 1 });
+  assert.ok(render(playback)[0].some(sample => sample !== 0));
+  command(playback, { type: 'clear', epoch: 1 });
+  command(playback, { type: 'start', epoch: 1, streamId: 2, ready: false });
+  command(playback, { type: 'chunk', epoch: 1, streamId: 2, samples: new Int16Array(1000).fill(10000) });
+  command(playback, { type: 'clear', epoch: 2 });
+  command(playback, { type: 'release', epoch: 1, streamId: 2 });
+  assert.ok(render(playback)[0].every(sample => sample === 0));
+  assert.equal(playback.messages.filter(event => event.streamId === 2 && event.status === 'started').length, 0);
+});

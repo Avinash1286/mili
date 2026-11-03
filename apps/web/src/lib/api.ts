@@ -1,4 +1,4 @@
-import { GuestResponseSchema, SessionSchema, CapabilitiesSchema, VoiceTicketSchema, type Session, type Topic, type Board } from '@tokai/contracts';
+import { GuestResponseSchema, SessionSchema, CapabilitiesSchema, VoiceTicketSchema, type Session, type Topic, type Board, type BoardTransaction, type MapUpdate, type SelectionContext } from '@tokai/contracts';
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 const KEY = 'tokai.guest.v1';
 let pendingGuest: Promise<string> | undefined;
@@ -27,7 +27,10 @@ export const api = {
   async list(): Promise<Session[]> { const data = await request('/v1/sessions'); return data.sessions.map((s: unknown) => SessionSchema.parse(s)); },
   async create(topic: Topic, mode: 'sample' | 'live') { const data = await request('/v1/sessions', { method: 'POST', body: JSON.stringify({ topic, mode }) }); return SessionSchema.parse(data.session); },
   async session(id: string) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}`); return SessionSchema.parse(data.session); },
-  async message(id: string, text: string, selectedNodeId?: string) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify({ text, selectedNodeId }) }); return SessionSchema.parse(data.session); },
+  async message(id: string, text: string, selectedNodeId?: string, selection?: SelectionContext) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify({ text, selectedNodeId, selection }) }); return SessionSchema.parse(data.session); },
+  async boardOperations(id: string, transaction: BoardTransaction) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/board-operations`, { method: 'POST', body: JSON.stringify(transaction) }); return SessionSchema.parse(data.session); },
+  async map(id: string, update: MapUpdate) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/map`, { method: 'PATCH', body: JSON.stringify(update) }); return SessionSchema.parse(data.session); },
+  async explainImage(id: string, text: string, selection: SelectionContext, image: string) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/explain-image`, { method: 'POST', body: JSON.stringify({ text, selection, image: { mimeType: 'image/png', data: image } }) }); return SessionSchema.parse(data.session); },
   async board(id: string, board: Board, revision: number) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/board`, { method: 'PATCH', body: JSON.stringify({ board, revision }) }); return SessionSchema.parse(data.session); },
   async end(id: string) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/end`, { method: 'POST', body: '{}' }); return SessionSchema.parse(data.session); },
   async remove(id: string) { await request(`/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); },

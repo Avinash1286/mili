@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import WebSocket from 'ws';
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceServerEvent, type Session } from '@tokai/contracts';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, TeachingBeatProposalSchema, type VoiceServerEvent, type Session } from '@tokai/contracts';
 import type { TranscriberInput, SynthesizerInput, SpeakOptions } from '@tokai/speech';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
@@ -36,6 +36,7 @@ describe('authenticated live voice protocol', () => {
       options?.onDone?.({ providerSessionId: 'tts', flushId: 0, audioDurationMs: 100 });
     };
     app = await createApp({ dataDir: directory, rateLimit: false, now: () => now, env: { GEMINI_API_KEY: 'fake-key', GEMINI_MODEL: 'test-model', ASSEMBLYAI_API_KEY: 'fake-speech' }, tutor: input => tutorBehavior(input), voice: {
+      boardReadyTimeoutMs: 500,
       createTranscriber: async input => { transcriberInput = input; await openInput(); return { sendAudio, forceEndpoint, close: closeStt }; },
       createSynthesizer: async input => { synthInput = input; await openOutput(); return { speak: (text, options) => speakBehavior(input, text, options), cancel: cancelTts, close: closeTts }; }
     } });
@@ -53,6 +54,7 @@ describe('authenticated live voice protocol', () => {
     await until(() => result.events.some(event => event.type === 'session.ready'), 'ready'); return result;
   }
   const send = (client: Received, event: object) => client.ws.send(JSON.stringify(event));
+  const visualReply = (): TutorReply => ({ text: 'First energy, then sugar.', beats: ['energy-step', 'sugar-step'].map((id, i) => TeachingBeatProposalSchema.parse({ spokenText: i ? 'Plants store energy in sugar.' : 'Sunlight supplies energy.', displayText: i ? 'Plants store energy in sugar.' : 'Sunlight supplies energy.', conceptIds: [i ? 'sugar' : 'light'], boardCommands: [{ type: 'upsert_node', node: { id, label: i ? 'Sugar' : 'Light', detail: 'A visual teaching step', x: i * 260, y: 700, kind: 'concept', conceptIds: [i ? 'sugar' : 'light'] } }], highlightNodeIds: [id], sourceRefs: [] })) });
   async function rejected(rawTicket: string, customOrigin = origin) {
     const ws = new WebSocket(`${url}/v1/voice?ticket=${rawTicket}`, { origin: customOrigin }); sockets.push(ws);
     return new Promise<number>((resolve, reject) => { ws.on('unexpected-response', (_request, response) => { response.resume(); resolve(response.statusCode!); }); ws.on('open', () => reject(new Error('Unexpected connection'))); ws.on('error', () => undefined); });
@@ -144,6 +146,62 @@ describe('authenticated live voice protocol', () => {
     send(client, { type: 'playback.ack', outputEpoch: start.outputEpoch, streamId: start.streamId, playedSamples: 48000, status: 'progress' });
     await until(() => client.events.some(event => event.type === 'audio.end'));
     expect(client.audio.reduce((sum, frame) => sum + frame.samples.length, 0)).toBe(144000);
+  });
+  it('commits one durable visual beat, waits for renderer readiness, then advances only after playback completion', async () => {
+    tutorBehavior = async () => visualReply();
+    const client = await connect(); send(client, { type: 'input.text', requestId: 'visuals', text: 'Teach two steps' });
+    await until(() => client.events.some(event => event.type === 'board.patch' && event.beatId));
+    const first = client.events.find(event => event.type === 'board.patch' && event.beatId)!;
+    if (first.type !== 'board.patch') throw new Error('Missing board patch');
+    expect(first.board.nodes.some(node => node.id === 'energy-step')).toBe(true);
+    expect(first.board.nodes.some(node => node.id === 'sugar-step')).toBe(false);
+    expect(client.audio).toHaveLength(0);
+    send(client, { type: 'board.ready', beatId: first.beatId, boardRevision: first.board.revision, outputEpoch: first.outputEpoch });
+    await until(() => client.events.some(event => event.type === 'audio.end'));
+    expect(client.events.filter(event => event.type === 'board.patch' && event.beatId)).toHaveLength(1);
+    const firstSynth = synthInput!;
+    const start = client.events.find(event => event.type === 'audio.start')!;
+    if (start.type !== 'audio.start') throw new Error('Missing audio');
+    expect(start.visualReady).toBe(true);
+    send(client, { type: 'playback.ack', outputEpoch: start.outputEpoch, streamId: start.streamId, playedSamples: 2400, status: 'completed' });
+    await until(() => client.events.filter(event => event.type === 'board.patch' && event.beatId).length === 2);
+    const second = client.events.filter(event => event.type === 'board.patch' && event.beatId)[1]!;
+    if (second.type !== 'board.patch') throw new Error('Missing second patch');
+    expect(second.board.nodes.some(node => node.id === 'sugar-step')).toBe(true);
+    send(client, { type: 'board.ready', beatId: second.beatId, boardRevision: second.board.revision, outputEpoch: second.outputEpoch });
+    await until(() => client.events.filter(event => event.type === 'audio.end').length === 2);
+    const beforeLateAudio = client.audio.length;
+    firstSynth.onAudio(new Uint8Array(4800), { providerSessionId: 'old-completed-beat', flushId: 0 });
+    await pause(20); expect(client.audio).toHaveLength(beforeLateAudio);
+    const secondStart = client.events.filter(event => event.type === 'audio.start')[1]!;
+    if (secondStart.type !== 'audio.start') throw new Error('Missing second audio');
+    send(client, { type: 'playback.ack', outputEpoch: secondStart.outputEpoch, streamId: secondStart.streamId, playedSamples: 2400, status: 'completed' });
+    await until(() => client.events.some(event => { if (event.type !== 'session.snapshot') return false; const beats = event.session.teachingBeats?.filter(beat => beat.turnId === 'text:visuals'); return beats?.length === 2 && beats.every(beat => beat.status === 'completed'); }));
+  });
+  it('interrupts a readiness wait without applying future visuals or rolling back an already committed board', async () => {
+    tutorBehavior = async () => visualReply(); const client = await connect();
+    send(client, { type: 'input.text', requestId: 'stop-visuals', text: 'Draw then stop' });
+    await until(() => client.events.some(event => event.type === 'board.patch' && event.beatId));
+    const patch = client.events.find(event => event.type === 'board.patch' && event.beatId)!;
+    if (patch.type !== 'board.patch') throw new Error('Missing patch');
+    send(client, { type: 'input.interrupt', outputEpoch: patch.outputEpoch });
+    await until(() => client.events.some(event => event.type === 'audio.cancel' && event.outputEpoch > patch.outputEpoch));
+    send(client, { type: 'board.ready', beatId: patch.beatId, boardRevision: patch.board.revision, outputEpoch: patch.outputEpoch });
+    await pause(50);
+    const saved = (await app.inject({ url: `/v1/sessions/${session.id}`, headers: headers() })).json().session as Session;
+    expect(saved.board.nodes.some(node => node.id === 'energy-step')).toBe(true);
+    expect(saved.board.nodes.some(node => node.id === 'sugar-step')).toBe(false);
+    expect(saved.teachingBeats?.filter(beat => beat.turnId === 'text:stop-visuals').every(beat => beat.status === 'interrupted')).toBe(true);
+    expect(client.audio).toHaveLength(0);
+  });
+  it('falls back explicitly when the renderer does not acknowledge and rejects scoped student edit conflicts without breaking voice', async () => {
+    tutorBehavior = async () => ({ ...visualReply(), beats: visualReply().beats!.slice(0, 1) }); const client = await connect();
+    send(client, { type: 'input.text', requestId: 'no-ready', text: 'Draw one step' });
+    await until(() => client.events.some(event => event.type === 'error' && event.code === 'BOARD_NOT_READY'));
+    await until(() => client.events.some(event => event.type === 'audio.start' && event.visualReady === false));
+    send(client, { type: 'board.operation', transaction: { operationId: 'stale-edit', expectedRevision: 0, commands: [{ type: 'upsert_node', node: { id: 'student-note', label: 'Note', detail: '', kind: 'detail', x: 0, y: 0 } }] } });
+    await until(() => client.events.some(event => event.type === 'error' && event.operationId === 'stale-edit' && event.code === 'BOARD_CONFLICT'));
+    send(client, { type: 'heartbeat' }); await until(() => client.events.some(event => event.type === 'heartbeat'));
   });
   it('replaces partials without tutor calls, deduplicates finals, and releases input on pause', async () => {
     const client = await connect(); send(client, { type: 'input.audio.start', streamId: 1 }); await until(() => Boolean(transcriberInput));

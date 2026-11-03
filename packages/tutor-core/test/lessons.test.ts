@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SessionSchema, TOPICS, type Session } from '@tokai/contracts';
-import { createLesson, sampleReply, summarizeSession, LESSONS } from '../src/index.js';
+import { createLesson, sampleReply, sampleTeachingReply, summarizeSession, LESSONS } from '../src/index.js';
 
 function respond(session: Session, text: string, selectedNodeId?: string) {
   const response = sampleReply(session, text, selectedNodeId);
@@ -17,6 +17,10 @@ describe('authored sample lessons', () => {
     const selected = lesson.board.nodes[1]!;
     expect(sampleReply(lesson, 'Explain this', selected.id)).toContain(selected.detail);
     expect(summarizeSession(lesson)).toContain('not verified mastery');
+    const visual = sampleTeachingReply(lesson, 'Show me a diagram');
+    expect(visual.text).toContain('prepared sample diagram');
+    expect(visual.beats?.[0]?.boardCommands.some(command => command.type === 'upsert_frame')).toBe(true);
+    expect(visual.warnings ?? []).toEqual([]);
   });
 
   it('keeps the actual question through greetings, help and selected-object exploration', () => {

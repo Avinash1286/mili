@@ -54,10 +54,11 @@ class TokaiPlayback extends AudioWorkletProcessor {
     }
     if (data.epoch !== this.epoch) return;
     if (data.type === 'start') {
-      if (!this.streams.some(stream => stream.id === data.streamId)) this.streams.push({ id: data.streamId, epoch: data.epoch, chunks: [], total: 0, offset: 0, position: 0, ended: false, started: false, underrun: false });
+      if (!this.streams.some(stream => stream.id === data.streamId)) this.streams.push({ id: data.streamId, epoch: data.epoch, chunks: [], total: 0, offset: 0, position: 0, ended: false, started: false, underrun: false, ready: data.ready !== false });
       return;
     }
     const stream = this.streams.find(item => item.id === data.streamId); if (!stream) return;
+    if (data.type === 'release') stream.ready = true;
     if (data.type === 'end') stream.ended = true;
     if (data.type === 'chunk') {
       if (!(data.samples instanceof Int16Array) || !data.samples.length) return;
@@ -77,6 +78,7 @@ class TokaiPlayback extends AudioWorkletProcessor {
       let stream = this.streams[0];
       while (stream && stream.ended && stream.position >= stream.total) { this.ack(stream, 'completed'); this.streams.shift(); this.queued -= Math.max(0, stream.total - stream.offset); stream = this.streams[0]; }
       if (!stream) break;
+      if (!stream.ready) continue;
       const index = Math.floor(stream.position);
       if (index >= stream.total || (!stream.ended && index + 1 >= stream.total)) {
         if (stream.started && !stream.underrun) { stream.underrun = true; this.ack(stream, 'underrun'); }

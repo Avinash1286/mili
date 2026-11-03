@@ -1,4 +1,4 @@
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session } from '@tokai/contracts';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext } from '@tokai/contracts';
 import { api, errorText, RequestError, voiceSocketUrl } from './api';
 
 export type VoiceView = {
@@ -7,9 +7,10 @@ export type VoiceView = {
   devices: { id: string; label: string }[]; deviceId: string; level: number;
   metrics?: { llmMs: number; firstAudioMs?: number; inputAudioMs: number; outputAudioMs: number };
   audibleMs?: number;
+  beatId?: string; highlightNodeIds: string[];
 };
-export const initialVoiceView: VoiceView = { state: 'idle', connected: false, microphone: false, recording: false, handsFree: false, partial: '', caption: '', error: '', notice: '', devices: [], deviceId: '', level: 0 };
-type OutputStream = { epoch: number; seq: number; played: number; messageId: string };
+export const initialVoiceView: VoiceView = { state: 'idle', connected: false, microphone: false, recording: false, handsFree: false, partial: '', caption: '', error: '', notice: '', devices: [], deviceId: '', level: 0, highlightNodeIds: [] };
+type OutputStream = { epoch: number; seq: number; played: number; messageId: string; beatId?: string; text?: string; highlightNodeIds?: string[]; visualReady?: boolean };
 
 /** One owner for browser media, network and cancellation. No provider credentials. */
 export class VoiceRuntime {
@@ -26,13 +27,29 @@ export class VoiceRuntime {
   private utteranceTimer?: ReturnType<typeof setTimeout>; private inputReadyTimer?: ReturnType<typeof setTimeout>; private speechFrames = 0; private silentFrames = 0;
   private preroll: Int16Array[] = []; private selectedNodeId?: string; private intentionalClose = false;
   private finalizedAt?: number;
+  private selection?: SelectionContext;
+  private beats = new Map<string, { text: string; messageId: string; highlightNodeIds: string[] }>();
+  private readyBeats = new Set<string>();
+  private displayedBoard?: Board; private displayedMap?: ConceptMap;
+  private visualPrepares = new Map<string, AbortController>();
+  private boardRequests = new Map<string, { resolve: (board: Board) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   onSession: (session: Session) => void = () => {};
+  onBoard: (board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[]) => Promise<boolean> = async () => false;
+  onMap: (map: ConceptMap) => void = () => {};
   constructor(private readonly sessionId: string) {}
   getSnapshot = () => this.view;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
   private update(patch: Partial<VoiceView>) { this.view = { ...this.view, ...patch }; this.listeners.forEach(fn => fn()); }
   private send(event: VoiceClientEvent) { if (this.socket?.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify(event)); return true; } return false; }
-  select(id?: string) { this.selectedNodeId = id; if (this.view.connected) this.send({ type: 'selection.update', selectedNodeId: id }); }
+  select(id?: string, selection?: SelectionContext) { this.selectedNodeId = id; this.selection = selection; if (this.view.connected) this.send({ type: 'selection.update', selectedNodeId: id, selection }); }
+  boardOperation(transaction: BoardTransaction): Promise<Board> {
+    if (!this.view.connected) return Promise.reject(new Error('Voice disconnected before the board could save.'));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.boardRequests.delete(transaction.operationId); reject(new Error('The board save was not acknowledged. Your edits are still here; reload the latest board before retrying.')); }, 10000);
+      this.boardRequests.set(transaction.operationId, { resolve, reject, timer });
+      if (!this.send({ type: 'board.operation', transaction })) { clearTimeout(timer); this.boardRequests.delete(transaction.operationId); reject(new Error('Voice disconnected before the board could save.')); }
+    });
+  }
 
   async start(microphone = true, deviceId = this.view.deviceId) {
     this.stop('idle'); const generation = ++this.generation;
@@ -153,15 +170,16 @@ export class VoiceRuntime {
   interrupt(reason: 'control' | 'speech' | 'typing' = 'control') {
     if (!this.view.connected) return;
     this.blockedEpoch = this.epoch;
+    for (const prepare of this.visualPrepares.values()) prepare.abort(); this.visualPrepares.clear();
     this.playback?.port.postMessage({ type: 'clear', epoch: this.epoch + 1 });
     this.send({ type: 'input.interrupt', outputEpoch: this.epoch, reason });
-    this.update({ state: 'interrupted', caption: '' });
+    this.update({ state: 'interrupted', caption: '', highlightNodeIds: [], beatId: undefined });
   }
-  text(text: string, selectedNodeId?: string) {
+  text(text: string, selectedNodeId?: string, selection?: SelectionContext) {
     if (!this.view.connected) return false;
     this.abandonInput(false);
-    this.interrupt('typing'); this.select(selectedNodeId);
-    const sent = this.send({ type: 'input.text', requestId: crypto.randomUUID(), text, selectedNodeId });
+    this.interrupt('typing'); this.select(selectedNodeId, selection);
+    const sent = this.send({ type: 'input.text', requestId: crypto.randomUUID(), text, selectedNodeId, selection });
     if (sent) this.update({ state: 'thinking', partial: '', error: '' }); return sent;
   }
   repeat(messageId: string) { if (!this.view.connected) return; this.interrupt(); this.send({ type: 'input.repeat', messageId }); }
@@ -181,13 +199,38 @@ export class VoiceRuntime {
     if (!this.connectionId && event.type !== 'session.ready' && event.type !== 'error') throw new Error('Voice session not initialized');
     this.lastServerSeq = event.seq;
     if (event.outputEpoch < this.epoch) return;
-    if (event.outputEpoch > this.epoch) { this.epoch = event.outputEpoch; this.playback?.port.postMessage({ type: 'clear', epoch: this.epoch }); }
+    if (event.outputEpoch > this.epoch) { this.epoch = event.outputEpoch; for (const prepare of this.visualPrepares.values()) prepare.abort(); this.visualPrepares.clear(); this.readyBeats.clear(); this.beats.clear(); this.playback?.port.postMessage({ type: 'clear', epoch: this.epoch }); }
     switch (event.type) {
       case 'session.ready':
         this.connectionId = event.connectionId; this.epoch = event.outputEpoch; this.playback?.port.postMessage({ type: 'clear', epoch: this.epoch }); clearTimeout(this.connectTimer);
-        this.onSession(event.session); this.update({ connected: true, state: 'listening', error: '' }); this.select(this.selectedNodeId);
+        this.displayedBoard = event.session.board; this.displayedMap = event.session.conceptMap;
+        this.onSession(event.session); this.update({ connected: true, state: 'listening', error: '' }); this.select(this.selectedNodeId, this.selection);
         this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 15000); break;
-      case 'session.snapshot': this.onSession(event.session); break;
+      case 'session.snapshot': {
+        // Live patches own visual application. A history/delivery snapshot must
+        // never bypass a pending renderer gate, even if it arrives first.
+        this.onSession({ ...event.session, board: this.displayedBoard ?? event.session.board, conceptMap: this.displayedMap });
+        break;
+      }
+      case 'board.patch': {
+        const request = this.boardRequests.get(event.operationId);
+        if (request) { clearTimeout(request.timer); this.boardRequests.delete(event.operationId); request.resolve(event.board); }
+        if (!request && event.outputEpoch <= this.blockedEpoch) break;
+        const epoch = event.outputEpoch, generation = this.generation;
+        const prepare = new AbortController(); if (event.beatId) this.visualPrepares.set(event.beatId, prepare);
+        const highlighted = this.beats.get(event.beatId ?? '')?.highlightNodeIds.filter(id => event.board.nodes.some(node => node.id === id)) ?? [];
+        const focusIds = event.beatId ? highlighted.length ? highlighted : event.board.nodes.filter(node => !this.displayedBoard?.nodes.some(previous => previous.id === node.id)).map(node => node.id) : undefined;
+        void this.onBoard(event.board, event.beatId, prepare.signal, event.map, focusIds).catch(() => false).then(ready => {
+          if (generation !== this.generation || epoch !== this.epoch || epoch <= this.blockedEpoch || !event.beatId) return;
+          this.displayedBoard = event.board;
+          if (event.map) this.displayedMap = event.map;
+          if (ready) { this.readyBeats.add(event.beatId); for (const [streamId, stream] of this.streams) if (stream.beatId === event.beatId && stream.epoch === epoch) this.playback?.port.postMessage({ type: 'release', epoch, streamId }); }
+          this.send({ type: 'board.ready', beatId: event.beatId, boardRevision: event.board.revision ?? 0, outputEpoch: epoch, ready });
+        }).finally(() => { if (event.beatId && this.visualPrepares.get(event.beatId) === prepare) this.visualPrepares.delete(event.beatId); });
+        if (request || !event.beatId) this.displayedBoard = event.board;
+        break;
+      }
+      case 'map.patch': if (event.outputEpoch > this.blockedEpoch) { this.displayedMap = event.map; this.onMap(event.map); } break;
       case 'input.ready':
         if (event.streamId !== this.inputStream || (!this.talking && !this.ending && !this.inputPendingEnd)) return;
         this.inputReady = true; clearTimeout(this.inputReadyTimer);
@@ -197,15 +240,20 @@ export class VoiceRuntime {
       case 'session.state': this.update({ state: event.state }); break;
       case 'transcript.partial': this.update({ partial: event.text, state: 'recognizing' }); break;
       case 'transcript.final': this.finalizedAt = performance.now(); this.update({ partial: '', state: 'thinking', audibleMs: undefined }); break;
-      case 'tutor.beat': if (event.outputEpoch > this.blockedEpoch) this.update({ caption: event.text, messageId: event.messageId }); break;
+      case 'tutor.beat': if (event.outputEpoch > this.blockedEpoch) { if (event.beatId) { this.beats.set(event.beatId, { text: event.text, messageId: event.messageId, highlightNodeIds: event.highlightNodeIds ?? [] }); if (this.beats.size > 50) this.beats.delete(this.beats.keys().next().value!); } else this.update({ caption: event.text, messageId: event.messageId }); } break;
       case 'audio.start':
         if (event.outputEpoch <= this.blockedEpoch) return;
-        this.streams.set(event.streamId, { epoch: event.outputEpoch, seq: 0, played: 0, messageId: event.messageId });
-        this.playback?.port.postMessage({ type: 'start', epoch: event.outputEpoch, streamId: event.streamId }); break;
+        this.streams.set(event.streamId, { epoch: event.outputEpoch, seq: 0, played: 0, messageId: event.messageId, beatId: event.beatId, ...this.beats.get(event.beatId ?? ''), visualReady: event.visualReady !== false });
+        this.playback?.port.postMessage({ type: 'start', epoch: event.outputEpoch, streamId: event.streamId, ready: event.visualReady === false || !event.beatId || this.readyBeats.has(event.beatId) }); break;
       case 'audio.end': this.playback?.port.postMessage({ type: 'end', epoch: event.outputEpoch, streamId: event.streamId }); break;
-      case 'audio.cancel': this.playback?.port.postMessage({ type: 'clear', epoch: event.outputEpoch }); this.update({ state: 'interrupted', caption: '' }); break;
+      case 'audio.cancel': this.playback?.port.postMessage({ type: 'clear', epoch: event.outputEpoch }); this.update({ state: 'interrupted', caption: '', highlightNodeIds: [], beatId: undefined }); break;
       case 'voice.metrics': this.update({ metrics: { llmMs: event.llmMs, firstAudioMs: event.firstAudioMs, inputAudioMs: event.inputAudioMs, outputAudioMs: event.outputAudioMs } }); break;
-      case 'error': if (!event.recoverable) this.fail(event.message); else { this.abandonInput(false); this.update({ error: event.message, state: 'error' }); } break;
+      case 'error': {
+        const request = event.operationId ? this.boardRequests.get(event.operationId) : undefined;
+        if (request) { clearTimeout(request.timer); this.boardRequests.delete(event.operationId!); request.reject(new RequestError(event.message, event.code === 'BOARD_CONFLICT' ? 409 : 400, event.code)); break; }
+        if (['BOARD_NOT_READY', 'VISUAL_UNAVAILABLE', 'TEACHING_WARNING'].includes(event.code)) { this.update({ notice: event.message, highlightNodeIds: [] }); break; }
+        if (!event.recoverable) this.fail(event.message); else { this.abandonInput(false); this.update({ error: event.message, state: 'error' }); } break;
+      }
       case 'heartbeat': break;
     }
   }
@@ -217,14 +265,17 @@ export class VoiceRuntime {
     this.send({ type: 'playback.ack', outputEpoch: data.outputEpoch, streamId: data.streamId, playedSamples: data.playedSamples, status: data.status });
     if (data.outputEpoch === this.epoch && data.outputEpoch > this.blockedEpoch) {
       if (data.status === 'started' && this.finalizedAt !== undefined) { this.update({ audibleMs: Math.round(performance.now() - this.finalizedAt) }); this.finalizedAt = undefined; }
+      if (data.status === 'started') this.update({ caption: stream.text ?? this.view.caption, messageId: stream.messageId, beatId: stream.beatId, highlightNodeIds: stream.visualReady ? stream.highlightNodeIds ?? [] : [] });
       if (data.status === 'started' || data.status === 'progress') this.update({ state: 'speaking' });
-      if (data.status === 'completed') this.update({ state: 'listening', caption: '' });
+      if (data.status === 'completed') this.update({ state: 'listening', caption: '', highlightNodeIds: [] });
     }
     if (data.status === 'completed' || data.status === 'interrupted') this.streams.delete(data.streamId);
   }
   stop(state: VoiceState = 'idle') {
     this.intentionalClose = true; this.generation++; clearInterval(this.heartbeat); clearTimeout(this.connectTimer); clearTimeout(this.utteranceTimer); clearTimeout(this.inputReadyTimer);
     this.connectAbort?.abort(); this.connectAbort = undefined;
+    for (const prepare of this.visualPrepares.values()) prepare.abort(); this.visualPrepares.clear();
+    for (const request of this.boardRequests.values()) { clearTimeout(request.timer); request.reject(new Error('Voice disconnected. Your unsaved board edits are preserved.')); } this.boardRequests.clear(); this.beats.clear(); this.readyBeats.clear();
     for (const [streamId, stream] of this.streams) this.send({ type: 'playback.ack', outputEpoch: stream.epoch, streamId, playedSamples: stream.played, status: 'interrupted' });
     if (state === 'paused') this.send({ type: 'session.pause' });
     this.send({ type: 'session.close' });
@@ -233,7 +284,7 @@ export class VoiceRuntime {
     if (this.playback) { this.playback.port.onmessage = null; this.playback.port.close(); this.playback.disconnect(); this.playback = undefined; }
     const context = this.context; this.context = undefined; if (context && context.state !== 'closed') void context.close().catch(() => {});
     this.streams.clear(); this.connectionId = undefined; this.finalizedAt = undefined;
-    this.update({ state, connected: false, recording: false, microphone: false, handsFree: false, partial: '', caption: '', level: 0 });
+    this.update({ state, connected: false, recording: false, microphone: false, handsFree: false, partial: '', caption: '', level: 0, highlightNodeIds: [], beatId: undefined });
   }
   pauseForVisibility() { if (this.view.connected || this.view.state === 'connecting') { this.stop('paused'); this.update({ notice: 'Voice paused because this page was hidden. Reconnect when you’re ready.' }); } }
   private fail(message: string) { this.stop('error'); this.update({ error: message }); }

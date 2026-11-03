@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { fixtureTransport } from '../fixtures/browser.js';
+
+test.beforeEach(async ({ page }) => { await fixtureTransport(page); });
 
 test('guest can learn, edit and save the board, review cards and finish a sample', async ({ page }) => {
   const errors: string[] = [];

@@ -29,7 +29,10 @@ describe('voice protocol trust boundaries', () => {
   });
   it('requires version, session, sequence and epoch for server controls', () => {
     const event = { protocolVersion: 1, connectionId: 'c1', sessionId: 's1', seq: 1, outputEpoch: 2, type: 'audio.start', streamId: 1, turnId: 't1', messageId: 'm1', sampleRate: 24000 };
-    expect(VoiceServerEventSchema.parse(event)).toEqual(event);
+    expect(VoiceServerEventSchema.parse(event)).toEqual({ ...event, visualReady: true });
+    expect(VoiceServerEventSchema.parse({ ...event, beatId: 'beat-1', visualReady: false })).toMatchObject({ beatId: 'beat-1', visualReady: false });
+    expect(VoiceClientEventSchema.safeParse({ type: 'board.ready', beatId: 'beat-1', outputEpoch: 1 }).success).toBe(false);
+    expect(VoiceClientEventSchema.parse({ type: 'board.ready', beatId: 'beat-1', outputEpoch: 1, boardRevision: 2 })).toMatchObject({ ready: true });
     expect(VoiceServerEventSchema.safeParse({ ...event, sampleRate: 16000 }).success).toBe(false);
     expect(VoiceServerEventSchema.safeParse({ ...event, outputEpoch: -1 }).success).toBe(false);
     expect(VoiceServerEventSchema.safeParse({ ...event, protocolVersion: 2 }).success).toBe(false);

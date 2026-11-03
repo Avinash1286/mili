@@ -9,6 +9,16 @@ export class ApiError extends Error {
 export type Principal = { hash: string; expiresAt: string };
 type StoredSession = { ownerHash: string; session: Session };
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
+function migrateLegacySession(value: unknown): Session {
+  const session = SessionSchema.parse(value);
+  // Phase 2 did not record authorship. Conservatively protect all untagged
+  // saved work; fresh lesson seeds explicitly record tutor authorship.
+  for (const node of session.board.nodes) node.author ??= 'student';
+  for (const edge of session.board.edges) edge.author ??= 'student';
+  for (const frame of session.board.frames ?? []) frame.author ??= 'student';
+  session.board.revision ??= 0;
+  return session;
+}
 
 export class FileStore {
   private locks = new Map<string, Promise<void>>();
@@ -56,7 +66,7 @@ export class FileStore {
     try { record = JSON.parse(await readFile(this.sessionFile(id), 'utf8')); }
     catch (error) { if (error instanceof ApiError) throw error; throw new ApiError(404, 'NOT_FOUND', 'Lesson not found.'); }
     if (record.ownerHash !== principal.hash) throw new ApiError(404, 'NOT_FOUND', 'Lesson not found.');
-    return SessionSchema.parse(record.session);
+    return migrateLegacySession(record.session);
   }
   async save(principal: Principal, session: Session) {
     this.assertPrincipal(principal);
@@ -69,7 +79,7 @@ export class FileStore {
       if (!filename.endsWith('.json')) continue;
       try {
         const record: StoredSession = JSON.parse(await readFile(path.join(this.directory, 'sessions', filename), 'utf8'));
-        if (record.ownerHash === principal.hash) result.push(SessionSchema.parse(record.session));
+        if (record.ownerHash === principal.hash) result.push(migrateLegacySession(record.session));
       } catch { /* Incomplete/corrupt records are never returned as another user's data. */ }
     }
     return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

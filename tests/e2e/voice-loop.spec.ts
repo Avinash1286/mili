@@ -1,46 +1,7 @@
-import { test, expect, type Page } from '@playwright/test';
-import WebSocket from 'ws';
+import { test, expect } from '@playwright/test';
+import { fixtureTransport, openLiveLesson } from '../fixtures/browser.js';
 
 test.use({ permissions: ['microphone'], launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } });
-
-type Event = { type: string; outputEpoch?: number; state?: string; [key: string]: unknown };
-async function fixtureTransport(page: Page) {
-  const events: Event[] = [], clientEvents: Event[] = [], errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  // Bridge browser transport to the real API with injected provider fixtures.
-  // Browser controls, contracts, audio worklets, tickets and server orchestration are unchanged.
-  await page.route('http://localhost:4000/**', async route => {
-    const url = new URL(route.request().url()); url.port = '4100';
-    await route.fulfill({ response: await route.fetch({ url: url.toString() }) });
-  });
-  await page.routeWebSocket('ws://localhost:4000/v1/voice?*', client => {
-    const url = new URL(client.url()); url.port = '4100';
-    const server = new WebSocket(url, { origin: 'http://localhost:3000', perMessageDeflate: false });
-    const pending: (string | Buffer)[] = [];
-    client.onMessage(message => {
-      if (typeof message === 'string') clientEvents.push(JSON.parse(message));
-      if (server.readyState === WebSocket.OPEN) server.send(message); else pending.push(message);
-    });
-    server.on('open', () => { for (const message of pending.splice(0)) server.send(message); });
-    server.on('message', (data, binary) => {
-      if (!binary) events.push(JSON.parse(data.toString()));
-      client.send(binary ? Buffer.from(data as Buffer) : data.toString());
-    });
-    server.on('close', code => { void client.close({ code: code === 1006 ? 1011 : code }); });
-    server.on('error', () => { void client.close({ code: 1011 }); });
-    client.onClose(() => { if (server.readyState < WebSocket.CLOSING) server.close(); });
-  });
-  return { events, clientEvents, errors };
-}
-
-async function openLiveLesson(page: Page) {
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Live AI/ })).toBeEnabled();
-  await page.getByRole('button', { name: /^Live AI/ }).click();
-  await page.getByRole('button', { name: /Explore photosynthesis/ }).click();
-  await expect(page).toHaveURL(/\/learn\//);
-  await expect(page.getByRole('button', { name: 'Start voice', exact: true })).toBeEnabled();
-}
 
 test('voice output uses the shared typed conversation and can be interrupted, then reconnected', async ({ page }) => {
   const transport = await fixtureTransport(page);

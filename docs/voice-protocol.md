@@ -1,4 +1,4 @@
-# Phase 2 application voice protocol
+# Application voice and teaching protocol
 
 The browser speaks Tokai's versioned protocol to the local Fastify service. Provider protocols are translated on the server; provider keys never enter the browser. See [provider protocol notes](provider-protocol.md) for the AssemblyAI wire format and [imp.md](../imp.md) for the full product target.
 
@@ -34,6 +34,12 @@ Input starts with `input.audio.start` and its stream ID. The browser buffers a b
 
 `audio.start` associates a stream with its message and turn. PCM follows as binary frames. `audio.end` means all server audio has been sent; only the browser's completed playback acknowledgement marks the message as fully played. Generated text stays visible even if playback fails or is interrupted, with delivery state indicating the difference.
 
+Phase 3 adds `beatId` to teaching/audio controls while retaining the binary stream/epoch association. A `tutor.beat` describes the current short step; a beat-scoped `board.patch` carries the authoritative board and optional concept map. The browser renders them together and acknowledges `board.ready` with the matching beat, board revision and output epoch. A worklet release gate prevents associated PCM from playing before that preparation completes. A three-second readiness failure is explicitly labeled and falls back to narration with `visualReady: false`. Timing guarantees are not inferred from this gate.
+
+The next beat's visuals are committed only after the preceding stream's completed playback acknowledgement. Durable commitment precedes renderer acknowledgement: a committed first diagram remains part of the lesson even if interruption occurs before it was heard or displayed. Cancelling discards future uncommitted beats and queued audio, without rolling back committed visuals. Full reconnect snapshots restore the current durable board/map; cancelled audio is never replayed.
+
+Students can submit `board.operation` or the authenticated board-operations HTTP endpoint while voice is active. Transactions use independent board revisions and operation IDs, not the session revision changed by playback progress. `selection.update` includes versioned semantic shape/concept context. Student-origin save acknowledgements remain valid during output cancellation.
+
 The browser clears its output queue immediately when the learner presses Stop or starts speaking. The server increments the epoch, cancels generation/synthesis, and rejects late work. Old-epoch audio cannot resume. Playback acknowledgements report processed source samples; they are an estimate of progress, not proof that a person heard or understood the content. The next tutor request does not assume interrupted, unplayed text was heard.
 
 Server credits limit outstanding browser audio to four seconds. Provider audio waits in a separately bounded queue. Input chunks, message size, requests, active connections, idle time, playback-ack time and session duration are bounded. These controls protect the single-process development runtime; they are not distributed quotas or a measured production capacity claim.
@@ -44,6 +50,6 @@ Server credits limit outstanding browser audio to four seconds. Provider audio w
 - TTS first-audio time measures synthesis startup to the first received PCM, including opening the synthesis connection.
 - Browser final-text to playback-processing time starts when `transcript.final` reaches the browser. It excludes earlier endpointing and physical output-device latency.
 - Audio duration counters are usage diagnostics. No dollar cost is displayed because current account pricing and billed usage have not been verified.
-- The real latency/quality gate in `imp.md` remains pending until credentials, a microphone and representative devices are tested.
+- Phase 2 provider checks and the user's voice test passed. Objective acoustic latency and representative-device quality targets in `imp.md` remain unmeasured; Phase 3 has its own browser and live-tool acceptance gate.
 
 The current persistence layer remains file-backed and single-process. PostgreSQL/OIDC/Redis and cloud deployment are still open work tracked in the full plan.

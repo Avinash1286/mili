@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SessionSchema } from './index';
+import { SessionSchema, BoardSchema, ConceptMapSchema, SelectionContextSchema, BoardTransactionSchema } from './index';
 
 export const VOICE_PROTOCOL_VERSION = 1;
 export const INPUT_SAMPLE_RATE = 16000;
@@ -15,12 +15,14 @@ const requestId = z.string().min(1).max(100);
 const uint = z.number().int().min(0).max(0xffffffff);
 const selection = z.string().min(1).max(100).optional();
 export const VoiceClientEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('input.text'), requestId, text: z.string().trim().min(1).max(2000), selectedNodeId: selection }),
+  z.object({ type: z.literal('input.text'), requestId, text: z.string().trim().min(1).max(2000), selectedNodeId: selection, selection: z.lazy(() => SelectionContextSchema).optional() }),
   z.object({ type: z.literal('input.audio.start'), streamId: uint }),
   z.object({ type: z.literal('input.audio.end') }),
   z.object({ type: z.literal('input.interrupt'), outputEpoch: uint, reason: z.enum(['control', 'speech', 'typing']).default('control') }),
   z.object({ type: z.literal('input.repeat'), messageId: requestId }),
-  z.object({ type: z.literal('selection.update'), selectedNodeId: selection }),
+  z.object({ type: z.literal('selection.update'), selectedNodeId: selection, selection: z.lazy(() => SelectionContextSchema).optional() }),
+  z.object({ type: z.literal('board.operation'), transaction: z.lazy(() => BoardTransactionSchema) }),
+  z.object({ type: z.literal('board.ready'), beatId: requestId, boardRevision: uint, outputEpoch: uint, ready: z.boolean().default(true) }),
   z.object({ type: z.literal('playback.ack'), outputEpoch: uint, streamId: uint, playedSamples: uint, status: z.enum(['started', 'progress', 'completed', 'interrupted', 'underrun']) }),
   z.object({ type: z.literal('session.pause') }),
   z.object({ type: z.literal('session.resume') }),
@@ -37,12 +39,14 @@ export const VoiceServerEventSchema = z.discriminatedUnion('type', [
   z.object({ ...envelope, type: z.literal('input.ready'), streamId: uint }),
   z.object({ ...envelope, type: z.literal('transcript.partial'), turnId: z.string(), text: z.string().max(12000) }),
   z.object({ ...envelope, type: z.literal('transcript.final'), turnId: z.string(), text: z.string().max(12000) }),
-  z.object({ ...envelope, type: z.literal('tutor.beat'), turnId: z.string(), messageId: z.string(), text: z.string().max(12000) }),
-  z.object({ ...envelope, type: z.literal('audio.start'), streamId: uint, turnId: z.string(), messageId: z.string(), sampleRate: z.literal(24000) }),
+  z.object({ ...envelope, type: z.literal('tutor.beat'), turnId: z.string(), messageId: z.string(), beatId: z.string().optional(), text: z.string().max(12000), spokenText: z.string().max(1200).optional(), conceptIds: z.array(z.string()).max(24).optional(), highlightNodeIds: z.array(z.string()).max(40).optional() }),
+  z.object({ ...envelope, type: z.literal('board.patch'), beatId: z.string().optional(), operationId: z.string(), board: z.lazy(() => BoardSchema), map: z.lazy(() => ConceptMapSchema).optional() }),
+  z.object({ ...envelope, type: z.literal('map.patch'), map: z.lazy(() => ConceptMapSchema) }),
+  z.object({ ...envelope, type: z.literal('audio.start'), streamId: uint, turnId: z.string(), messageId: z.string(), beatId: z.string().optional(), visualReady: z.boolean().default(true), sampleRate: z.literal(24000) }),
   z.object({ ...envelope, type: z.literal('audio.end'), streamId: uint }),
   z.object({ ...envelope, type: z.literal('audio.cancel'), reason: z.string().max(200) }),
   z.object({ ...envelope, type: z.literal('voice.metrics'), turnId: z.string(), llmMs: z.number().nonnegative(), firstAudioMs: z.number().nonnegative().optional(), inputAudioMs: z.number().nonnegative(), outputAudioMs: z.number().nonnegative() }),
-  z.object({ ...envelope, type: z.literal('error'), code: z.string(), message: z.string().max(1000), recoverable: z.boolean() }),
+  z.object({ ...envelope, type: z.literal('error'), code: z.string(), message: z.string().max(1000), recoverable: z.boolean(), operationId: z.string().optional() }),
   z.object({ ...envelope, type: z.literal('heartbeat') })
 ]);
 export type VoiceServerEvent = z.infer<typeof VoiceServerEventSchema>;

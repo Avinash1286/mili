@@ -16,6 +16,7 @@
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "test:e2e": "playwright test",
     "verify:tutor": "tsx scripts/verify-tutor.ts",
+    "verify:teaching": "tsx scripts/verify-teaching.ts",
     "verify:speech": "tsx scripts/verify-speech.ts"
   },
   "devDependencies": {

@@ -6,8 +6,8 @@ Full scope: [imp.md](../imp.md). New root: `F:\mili`.
 
 - Work phase by phase.
 - At the end of each phase, report what was delivered, checks actually run, limitations, and exact user testing steps.
-- Pause for the user's testing/feedback before starting the next phase.
-- Push only the work explicitly approved for GitHub. Phase 1 was approved and pushed on 2026-11-03; the user also approved Phase 2 and authorized its push on 2026-11-03. Phase 3 requires its own later approval.
+- On 2026-11-03 the user authorized publishing Phase 3 and completing all remaining phases without pausing for manual acceptance, with a GitHub push after each completed phase.
+- Preserve a separate checked commit for each phase. Report remaining live-service, device, deployment and event-verification limits honestly; authorization to continue does not establish those results.
 
 ## Phase 1 — foundation and sample lesson
 
@@ -38,7 +38,7 @@ User handoff: [Phase 1 testing checklist](phase-1-testing.md). Approved snapshot
 
 ## Phase 2 — live voice loop
 
-Status: tested and approved by the user on 2026-11-03; GitHub push authorized. The user also authorized starting Phase 3.
+Status: tested, approved by the user and pushed on 2026-11-03 at [`80ea6ea`](https://github.com/Avinash1286/mili/commit/80ea6eabc2ca7a47a829a16c1b3837523b960b46). The user also authorized starting Phase 3.
 
 Scope: authenticated voice WebSocket, live STT and TTS adapters, resampled microphone capture and streaming PCM playback, shared typed/voice conversation, interruption and stale-output rejection, explicit delivery state, bounded resource use, reconnect snapshot, diagnostics, and test/probe tooling. Visual teaching tools and the full beat/board scheduler remain Phase 3.
 
@@ -74,12 +74,44 @@ The first browser run caught a shared-module import resolution issue and a test-
 
 The user accepted the phase after the provider checks and browser testing. The limited live probes verified tutor generation and speech protocol access; objective echo, acoustic interruption delay, network latency percentiles and provider billing/capacity measurements remain **unverified**. Account billing settings were not changed or independently inspected. Fresh TTS connections add handshake cost and consume creation quota; see [provider notes](provider-protocol.md). Distributed persistence/auth and visual teaching tools remain in their planned phases.
 
-## Following phases (start only after the preceding user test)
+## Phase 3 — teaching and visual coordination
 
-1. **Phase 2 — live voice loop:** credentialed Gemini and AssemblyAI verification, streaming STT/TTS, browser worklets, interruption, transcript deduplication, measured latency. Complete backend ownership/persistence prerequisites as required.
-2. **Phase 3 — teaching and visual coordination:** structured tools, semantic board/tldraw adapter, beat/audio coordination, selection grounding, concept map.
-3. **Phase 4 — gestures and spatial lessons:** local MediaPipe, calibration, accessible alternatives, licensed 3D catalog and part selection.
-4. **Phase 5 — durable learning:** accounts/PostgreSQL where not already delivered, source upload/retrieval, assessments, mastery evidence, scheduled reviews, summaries/recaps, exports and sharing.
-5. **Phase 6 — release and hackathon proof:** real-device/accessibility/security/fault checks, capacity and cost measurements, deployment/restore, provenance, demo and verified submission obligations.
+Status: implemented, automated checks passed, and approved for GitHub publishing by the user on 2026-11-03. Live visual-provider verification remains open as detailed below. Phase 2 is pushed to `main` at `80ea6eabc2ca7a47a829a16c1b3837523b960b46`.
 
-These are reviewable delivery increments across the full imp.md dependency graph. They do not remove planned work. If an increment is too large to review, split it into numbered subphases and stop for testing at each boundary.
+Scope: bounded Gemini teaching tools, semantic board transactions and editable diagram templates, independent board/map revisions, student-work protection, selection grounding, explicit board-crop image explanations, linked concept maps, and teaching beats gated by visual readiness and browser playback completion. See [architecture decisions](phase-3-architecture.md). User accounts and distributed persistence, gestures and 3D remain in their planned phases.
+
+### Delivered
+
+- Shared semantic scene and atomic board transactions with stable IDs, independent revisions, bounded commands, operation deduplication and conflict recovery. Tutor updates preserve student-authored shapes, connectors and frames; older saved objects without authorship are conservatively protected as student work.
+- A project-owned SVG `BoardAdapter`: editable shapes, equations, fractions, number lines, explicit-point graphs, freehand annotations, connectors and frames; pointer/keyboard editing, pan/zoom/fit, local undo/redo, SVG/PNG export and saved board changes. The renderer choice follows the alternative permitted in `imp.md`; no tldraw license or account upgrade was required.
+- Deterministic process, comparison, hierarchy, timeline, labeled-diagram, fraction, number-line, equation and graph templates. Generated content remains editable rather than becoming a flat illustration.
+- A bounded Gemini tool loop for diagram creation, typed shape edits, highlights, concept-map updates, lesson focus and short teaching beats. Required drawing/edit inputs are exposed in the provider JSON schemas; all results receive application validation, with at most three model rounds, eight tools, one repair and two beats per turn.
+- Semantic selection grounding and an explicit board-crop preview/share flow. Only the share action sends a bounded PNG to Gemini; the image is not stored in the lesson. The preview supports keyboard focus containment, Escape and focus restoration.
+- Linked concept maps with stable IDs, graph/list views, saved arrangements, and links to board objects, conversation and review cards. Map changes cannot invent assessment evidence or silently erase student work.
+- Durable teaching beats across HTTP and voice: renderer readiness gates speech, and completed browser playback advances the next beat. Cancellation rejects stale output and future uncommitted visuals; committed diagrams remain saved. Captions and delivery states do not claim precise live word timing.
+- Isolated browser fixtures for the real application/API/worklets, temporary test storage, and an opt-in metadata-only live teaching probe. Ordinary checks do not call providers or touch user lessons.
+
+### Verification and acceptance
+
+Completed automated checks:
+
+- `pnpm check` — passed: all package/tooling typechecks, **161 unit and integration tests** (25 contracts, 46 speech, 36 web/worklet, 24 tutor, 30 API), the production Next.js build and API build check.
+- `pnpm test:e2e` — **12 Chromium walkthroughs passed in the final full run**: desktop/mobile samples, semantic editing/undo/save/grounding/export, two-tab conflict recovery, explicit image sharing, concept-map evidence and arrangement, visual readiness/interruption, successive playback-gated beats, cancelled model results, typed voice/reconnect, microphone deduplication and denied-microphone fallback.
+- Desktop and mobile screenshots inspected; the current diagram is framed without covering seed objects, toolbar/export actions remain reachable, and the mobile page has no horizontal overflow.
+- `pnpm build` was rerun successfully after the final CSS recovery-banner fix. `pnpm dev` was restarted; the web page returned HTTP 200 and the API liveness check returned `ok` with tutor, speech and voice configuration enabled. These configuration flags do not establish provider availability.
+- `pnpm verify:teaching` without flags — passed without making a provider request.
+- Local configured key values were checked against all 53 changed/new source and documentation files; zero matches. `.env` and probe recordings remain ignored.
+
+Earlier browser runs exposed a Save board button overlap, a clipped mobile export menu, an error notification covering the Discard action and test selector mismatches; these were corrected before the final passing run. Error messages now occupy their own row instead of covering recovery controls. Validation also drove fixes for order-independent board diffs, connector arrow endpoints, viewport bounds/initial measurement, delayed snapshots, stale PCM, board/map references, legacy opaque IDs, frame diff ordering and diagram placement.
+
+Live Gemini checks exposed an ambiguous drawing-tool schema; diagram creation and explicit edits now have separate required schemas and use documented validated function calling. The bounded probe after that fix returned HTTP **503** before any tool call. Earlier attempts also encountered HTTP 504 and malformed/incomplete tool results. **Live Phase 3 diagram generation has not yet passed**, and live image explanation quality and combined speech/visual timing remain unverified. These are explicit user-testing items, not covered by injected provider fixtures. No further automatic retries, paid fallback or billing changes were enabled.
+
+The direct Gemini plus AssemblyAI architecture and existing free-account preference remain in effect. Live requests consume the configured accounts' quota/credits; account billing settings have not been independently inspected. User handoff: [Phase 3 testing checklist](phase-3-testing.md). The user authorized continuing through Phases 4–6 and pushing each completed phase without waiting for separate manual testing.
+
+## Following phases (authorized to proceed sequentially)
+
+1. **Phase 4 — gestures and spatial lessons:** local MediaPipe, calibration, accessible alternatives, licensed 3D catalog and part selection.
+2. **Phase 5 — durable learning:** accounts/PostgreSQL where not already delivered, source upload/retrieval, assessments, mastery evidence, scheduled reviews, summaries/recaps, exports and sharing.
+3. **Phase 6 — release and hackathon proof:** real-device/accessibility/security/fault checks, capacity and cost measurements, deployment/restore, provenance, demo and verified submission obligations.
+
+These are reviewable delivery increments across the full imp.md dependency graph. They do not remove planned work. Run the relevant checks and record results before each phase's GitHub push.

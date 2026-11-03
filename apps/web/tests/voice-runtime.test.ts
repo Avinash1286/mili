@@ -154,4 +154,56 @@ describe('browser voice lifecycle', () => {
     expect(runtime.getSnapshot()).toMatchObject({ state: 'error', connected: false });
     expect(FakeSocket.instances).toHaveLength(0);
   });
+  it('acknowledges board readiness only after rendering and then releases the corresponding beat', async () => {
+    let finishRender!: (ready: boolean) => void;
+    runtime.onBoard = vi.fn(() => new Promise<boolean>(resolve => { finishRender = resolve; }));
+    await runtime.start(false); const socket = ready();
+    socket.event({ type: 'tutor.beat', beatId: 'beat-1', turnId: 'turn-1', messageId: 'message-1', text: 'Watch this idea', highlightNodeIds: ['a'] });
+    socket.event({ type: 'board.patch', operationId: 'visual-1', beatId: 'beat-1', board: { ...session.board, revision: 1, nodes: [{ id: 'a', label: 'Focus here', detail: '', kind: 'concept', x: 1140, y: 80 }] } });
+    socket.event({ type: 'audio.start', beatId: 'beat-1', turnId: 'turn-1', messageId: 'message-1', streamId: 7, sampleRate: 24000, visualReady: true });
+    const playback = FakeWorklet.instances.find(node => node.name === 'tokai-playback')!;
+    expect(socket.controls().some(event => event.type === 'board.ready')).toBe(false);
+    expect(runtime.onBoard).toHaveBeenCalledWith(expect.any(Object), 'beat-1', expect.any(AbortSignal), undefined, ['a']);
+    expect(playback.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'start', ready: false, streamId: 7 }));
+    finishRender(true); await vi.advanceTimersByTimeAsync(0);
+    expect(socket.controls()).toContainEqual({ type: 'board.ready', beatId: 'beat-1', boardRevision: 1, outputEpoch: 10, ready: true });
+    expect(playback.port.postMessage).toHaveBeenCalledWith({ type: 'release', epoch: 10, streamId: 7 });
+  });
+  it('never releases a stale visual prepare after interruption', async () => {
+    let finishRender!: (ready: boolean) => void;
+    runtime.onBoard = () => new Promise(resolve => { finishRender = resolve; });
+    await runtime.start(false); const socket = ready();
+    socket.event({ type: 'board.patch', operationId: 'visual-old', beatId: 'beat-old', board: { ...session.board, revision: 1 } });
+    runtime.interrupt(); socket.event({ type: 'audio.cancel', outputEpoch: 11, reason: 'Student interrupted' });
+    finishRender(true); await vi.advanceTimersByTimeAsync(0);
+    expect(socket.controls().some(event => event.type === 'board.ready')).toBe(false);
+  });
+  it('rejects a scoped board conflict without disrupting microphone or voice', async () => {
+    await runtime.start(true); const socket = ready();
+    const saving = runtime.boardOperation({ operationId: 'save-1', expectedRevision: 0, commands: [{ type: 'upsert_node', node: { id: 'a', label: 'My idea', detail: '', kind: 'concept', x: 0, y: 0 } }] });
+    const rejection = expect(saving).rejects.toMatchObject({ status: 409, code: 'BOARD_CONFLICT' });
+    socket.event({ type: 'error', code: 'BOARD_CONFLICT', operationId: 'save-1', message: 'The board changed', recoverable: true });
+    await rejection;
+    expect(runtime.getSnapshot()).toMatchObject({ connected: true, microphone: true, state: 'listening' });
+  });
+  it('history snapshots cannot bypass a pending visual prepare and interruption blocks late patches', async () => {
+    const sessions: Session[] = []; runtime.onSession = value => sessions.push(value);
+    let pendingSignal: AbortSignal | undefined;
+    runtime.onBoard = vi.fn((_board, _beatId, signal) => { pendingSignal = signal; return new Promise<boolean>(resolve => signal?.addEventListener('abort', () => resolve(false), { once: true })); });
+    runtime.onMap = vi.fn();
+    await runtime.start(false); const socket = ready();
+    const changed = { ...session.board, revision: 1, nodes: [{ id: 'future', label: 'Pending visual', detail: '', kind: 'concept', x: 0, y: 0 }] };
+    socket.event({ type: 'session.snapshot', session: { ...session, revision: 1, board: changed } });
+    expect(sessions.at(-1)?.board.nodes).toHaveLength(0);
+    socket.event({ type: 'board.patch', operationId: 'visual-1', beatId: 'beat-1', board: changed });
+    runtime.interrupt();
+    expect(pendingSignal?.aborted).toBe(true);
+    socket.event({ type: 'board.patch', operationId: 'visual-late', beatId: 'beat-late', board: changed });
+    socket.event({ type: 'map.patch', map: { topicId: 'photosynthesis', revision: 1, nodes: [], edges: [] } });
+    socket.event({ type: 'session.snapshot', session: { ...session, revision: 2, board: changed } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runtime.onBoard).toHaveBeenCalledTimes(1); expect(runtime.onMap).not.toHaveBeenCalled();
+    expect(sessions.at(-1)?.board.nodes).toHaveLength(0);
+    expect(socket.controls().some(event => event.type === 'board.ready')).toBe(false);
+  });
 });

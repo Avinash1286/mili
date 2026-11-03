@@ -114,7 +114,9 @@ export function createLesson(input: { id: string; topic: Topic; mode: 'sample' |
     id: input.id, topic: input.topic, mode: input.mode, title: TOPICS.find(t => t.id === input.topic)!.title,
     status: 'active', createdAt: input.now, updatedAt: input.now, revision: 0,
     messages: [{ id: input.messageId, role: 'tutor', text: lesson.intro, createdAt: input.now }],
-    board: lessonBoard(input.topic),
+    board: { ...lessonBoard(input.topic), revision: 0, nodes: lessonBoard(input.topic).nodes.map(node => ({ ...node, author: 'tutor' as const, revision: 0, conceptIds: [node.id] })), edges: lessonBoard(input.topic).edges.map(edge => ({ ...edge, author: 'tutor' as const, revision: 0 })) },
+    conceptMap: { topicId: input.topic, revision: 0, nodes: lesson.nodes.map((node, i) => ({ id: node.id, label: node.label, description: node.detail, status: 'introduced' as const, x: (i % 3) * 260, y: Math.floor(i / 3) * 170, author: 'tutor' as const, boardNodeIds: [node.id], cardIds: lesson.cards.flatMap((card, index) => card.conceptId === node.id ? [`${input.topic}-card-${index}`] : []) })), edges: lesson.links.map(([from, to, label], i) => ({ id: `${input.topic}-map-${i}`, from, to, label })) },
+    lessonFocus: { goal: TOPICS.find(t => t.id === input.topic)!.description, currentConceptId: lesson.nodes[0]!.id, nextStep: lesson.questions[0]!.prompt, phase: 'diagnose' },
     concepts: lesson.nodes.map(node => ({ id: node.id, label: node.label, status: 'introduced' })),
     flashcards: lesson.cards.map((card, i) => ({ ...card, id: `${input.topic}-card-${i}` }))
   };

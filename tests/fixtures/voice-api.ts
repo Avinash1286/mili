@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../apps/api/src/app.js';
 import type { TranscriberInput, SynthesizerInput, SpeakOptions } from '../../packages/speech/src/index.js';
+import { DELAYED_VISUAL_REQUEST, VISUAL_REQUEST, visualReply } from './teaching.js';
 
 async function main() {
 const directory = await mkdtemp(path.join(tmpdir(), 'tokai-voice-e2e-'));
@@ -13,9 +14,23 @@ const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 const app = await createApp({
   dataDir: directory, rateLimit: false,
   env: { GEMINI_API_KEY: 'test-gemini-key', GEMINI_MODEL: 'fixture-model', ASSEMBLYAI_API_KEY: 'test-speech-key' },
-  tutor: async ({ text, signal }) => {
-    await delay(50);
-    signal?.throwIfAborted();
+  // Explicitly replace the HTTP speech route too, so every fixture path is offline.
+  speech: async () => {
+    const audio = Buffer.alloc(44 + 4800);
+    audio.write('RIFF', 0); audio.writeUInt32LE(audio.length - 8, 4); audio.write('WAVE', 8);
+    audio.write('fmt ', 12); audio.writeUInt32LE(16, 16); audio.writeUInt16LE(1, 20); audio.writeUInt16LE(1, 22);
+    audio.writeUInt32LE(24000, 24); audio.writeUInt32LE(48000, 28); audio.writeUInt16LE(2, 32); audio.writeUInt16LE(16, 34);
+    audio.write('data', 36); audio.writeUInt32LE(4800, 40);
+    return { audio, contentType: 'audio/wav' };
+  },
+  vision: async () => ({ text: 'Fixture crop explanation: the shared drawing connects light energy with sugar production.' }),
+  tutor: async ({ text, signal, session, selectedNodeId, selection }) => {
+    await delay(text === DELAYED_VISUAL_REQUEST ? 1200 : 50);
+    // Deliberately emulate a provider that completes despite cancellation.
+    if (text !== DELAYED_VISUAL_REQUEST) signal?.throwIfAborted();
+    if (text === VISUAL_REQUEST || text === DELAYED_VISUAL_REQUEST) return visualReply(session);
+    const selected = session.board.nodes.find(node => node.id === (selection?.shapeIds[0] ?? selectedNodeId));
+    if (selected) return { text: `Selected concept: ${selected.label}. ${selected.detail}` };
     return { text: `Fixture tutor response: ${text}. Sunlight supplies the energy plants use to make sugar.` };
   },
   voice: {
@@ -59,6 +74,10 @@ const app = await createApp({
             await delay(10);
           }
           options.onDone?.({ ...identity, audioDurationMs: 3000 });
+          // Match the real provider: timing metadata arrives after delivery completion.
+          const words = _text.split(/\s+/);
+          input.onBoundaries?.({ ...identity, audioStartMs: 7000,
+            words: [{ word: words[0]!, startMs: 7000, endMs: 7200, confidence: .99 }, { word: words.at(-1)!, startMs: 9400, endMs: 9800, confidence: .99 }] });
         },
         async cancel() { cancelled = true; },
         close() { closed = true; }
