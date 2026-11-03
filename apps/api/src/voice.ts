@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { VoiceClientEventSchema, decodeAudioFrame, encodeAudioFrame, MAX_AUDIO_SAMPLES, type Session, type VoiceClientEvent, type VoiceState, type SelectionContext, type TeachingBeat } from '@tokai/contracts';
 import { createTranscriber, createSynthesizer } from '@tokai/speech';
 import { type GenerateReply, TutorError, groundSpatialSelection } from '@tokai/tutor-core';
-import { ApiError, FileStore, type Principal } from './store.js';
+import { ApiError, type Store, type Principal } from './store.js';
 import { applySessionBoardTransaction, sceneFailure } from './board-operations.js';
 import { planTeachingBeats, appendTeachingBeats, commitBeatVisuals, markTeachingInterrupted } from './teaching.js';
 
@@ -17,11 +17,12 @@ export type VoiceOptions = {
   maxSessionMs?: number;
   boardReadyTimeoutMs?: number;
 };
-type Ticket = { principal: Principal; sessionId: string; expiresAt: number };
+type Ticket = { principal: Principal; sessionId: string; expiresAt: number; fence?: number };
 type Stream = { id: number; epoch: number; messageId: string; turnId: string; beatId?: string; sentSamples: number; playedSamples: number; ended: boolean; cancelled: boolean; seq: number; pending: Int16Array[]; pendingSamples: number; providerDone: boolean; lastAckAt: number };
 type RuntimeOptions = {
-  store: FileStore; env: Record<string, string | undefined>; now: () => number;
+  store: Store; env: Record<string, string | undefined>; now: () => number;
   tutor: GenerateReply; voice?: VoiceOptions; origin: string;
+  tutorWithPrincipal?: (input: Parameters<GenerateReply>[0], principal: Principal) => ReturnType<GenerateReply>;
   httpBusy?: (sessionId: string) => boolean;
 };
 type Transcriber = Awaited<ReturnType<typeof createTranscriber>>;
@@ -29,7 +30,7 @@ type Synthesizer = Awaited<ReturnType<typeof createSynthesizer>>;
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const bytes = (raw: RawData): Uint8Array => raw instanceof ArrayBuffer ? new Uint8Array(raw) : Array.isArray(raw) ? Buffer.concat(raw) : raw;
 
-/** Single-process ownership: no provider await holds the durable file mutation lock. */
+/** Owner lease fences protect persistent writes across API processes. */
 export class VoiceManager {
   private tickets = new Map<string, Ticket>();
   private sessions = new Map<string, VoiceConnection | 'reserved'>();
@@ -39,11 +40,15 @@ export class VoiceManager {
   constructor(private readonly options: RuntimeOptions) {}
   active(sessionId: string) { return this.sessions.has(sessionId); }
   publishBoard(session: Session, operationId: string) { const connection = this.sessions.get(session.id); if (connection && connection !== 'reserved') connection.publishBoard(session, operationId); }
-  assertHttpAvailable(sessionId: string) { if (this.active(sessionId)) throw new ApiError(409, 'VOICE_ACTIVE', 'This lesson has an active voice connection. Send text through that connection or disconnect voice first.'); }
+  async assertHttpAvailable(sessionId: string, principal?: Principal) { if (this.active(sessionId) || principal && await this.options.store.fenceActive(`voice:${principal.ownerId}`)) throw new ApiError(409, 'VOICE_ACTIVE', 'This learner has an active voice connection. Send text through that connection or disconnect voice first.'); }
   async closeSession(sessionId: string, reason: string) {
     for (const [key, ticket] of this.tickets) if (ticket.sessionId === sessionId) this.tickets.delete(key);
     const connection = this.sessions.get(sessionId);
     if (connection && connection !== 'reserved') await connection.close(reason);
+  }
+  async closeOwner(ownerId: string) {
+    for (const [key, ticket] of this.tickets) if (ticket.principal.ownerId === ownerId) this.tickets.delete(key);
+    const id = this.owners.get(ownerId); if (id) await this.closeSession(id, 'Account access changed');
   }
   async register(app: FastifyInstance) {
     await app.register(websocket, { options: { maxPayload: 64 * 1024, perMessageDeflate: false }, errorHandler: (_error, socket) => socket.close(1011, 'Voice connection failed') });
@@ -52,6 +57,8 @@ export class VoiceManager {
       const principal = await this.options.store.authenticate(header?.startsWith('Bearer ') ? header.slice(7) : undefined);
       const session = await this.options.store.get(principal, request.params.id);
       this.checkSession(session);
+      const previousId = this.owners.get(principal.hash), previous = previousId ? this.sessions.get(previousId) : undefined;
+      if (previous && previous !== 'reserved') await previous.settleClosing();
       if (this.options.httpBusy?.(session.id)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current text response before connecting voice.');
       if (this.owners.has(principal.hash)) throw new ApiError(409, 'VOICE_ACTIVE', 'This guest already has an active voice connection.');
       const now = this.options.now();
@@ -78,12 +85,14 @@ export class VoiceManager {
           if (this.options.httpBusy?.(ticket.sessionId)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current text response before connecting voice.');
           if (this.sessions.size >= 10) throw new ApiError(429, 'VOICE_BUSY', 'Voice connections are busy. Please try again shortly.');
           if (this.sessions.has(ticket.sessionId) || this.owners.has(ticket.principal.hash)) throw new ApiError(409, 'VOICE_ACTIVE', 'A voice connection already owns this lesson or guest.');
+          ticket.fence = await this.options.store.acquireFence(`voice:${ticket.principal.ownerId}`, 30000);
           this.sessions.set(ticket.sessionId, 'reserved');
           this.owners.set(ticket.principal.hash, ticket.sessionId);
           this.upgrade.set(request, ticket);
           const releaseReservation = () => {
             if (this.upgrade.get(request) !== ticket) return;
             this.upgrade.delete(request);
+            void this.options.store.releaseFence(`voice:${ticket.principal.ownerId}`, ticket.fence!).catch(() => undefined);
             if (this.sessions.get(ticket.sessionId) === 'reserved') this.sessions.delete(ticket.sessionId);
             if (this.owners.get(ticket.principal.hash) === ticket.sessionId) this.owners.delete(ticket.principal.hash);
           };
@@ -138,6 +147,8 @@ class VoiceConnection {
   private ready = false;
   private closeWork?: Promise<void>;
   private timer?: ReturnType<typeof setInterval>;
+  private leaseTimer?: ReturnType<typeof setInterval>;
+  private renewing = false;
   private startedAt: number;
   private lastActivity: number;
   private rateWindow: number;
@@ -160,6 +171,14 @@ class VoiceConnection {
       else if (this.currentStream && this.currentStream.sentSamples > this.currentStream.playedSamples && now - this.currentStream.lastAckAt > 10000) void this.close('Playback acknowledgement timed out');
     }, 1000);
     this.timer.unref();
+    this.leaseTimer = setInterval(() => {
+      if (this.renewing || this.closed) return;
+      this.renewing = true;
+      void (async () => {
+        await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
+        if (!await this.options.store.renewFence(`voice:${this.ticket.principal.ownerId}`, this.ticket.fence!, 30000)) throw new Error('Voice lease expired');
+      })().catch(() => this.close('Voice access expired')).finally(() => { this.renewing = false; });
+    }, 10000); this.leaseTimer.unref();
     void this.initialize().catch(error => { this.fail(error); void this.close('Voice initialization failed'); });
   }
   private async initialize() {
@@ -183,7 +202,7 @@ class VoiceConnection {
     this.socket.send(JSON.stringify({ protocolVersion: 1, connectionId: this.connectionId, sessionId: this.ticket.sessionId, seq: this.seq++, outputEpoch: this.epoch, ...event }));
   }
   private state(state: VoiceState) { this.emit({ type: 'session.state', state }); }
-  private save(session: Session) { session.revision++; session.updatedAt = new Date(this.options.now()).toISOString(); return this.options.store.save(this.ticket.principal, session); }
+  private save(session: Session) { session.revision++; session.updatedAt = new Date(this.options.now()).toISOString(); return this.options.store.save(this.ticket.principal, session, { lease: { key: `voice:${this.ticket.principal.ownerId}`, fence: this.ticket.fence! } }); }
   private snapshot(session: Session) { this.emit({ type: 'session.snapshot', session }); }
   publishBoard(session: Session, operationId: string, beatId?: string) {
     if (beatId) { this.emit({ type: 'board.patch', operationId, beatId, board: session.board, map: session.conceptMap, spatialState: session.teachingBeats?.find(beat => beat.beatId === beatId)?.spatialUpdate, visualSurface: session.visualSurface }); return; }
@@ -352,12 +371,14 @@ class VoiceConnection {
     const valid = () => !this.closed && !this.paused && !active.signal.aborted && this.epoch === generationEpoch && this.generation === active;
     const start = this.options.now();
     try {
-      const result = await this.options.tutor({ session: context, text, selectedNodeId, selection, apiKey: this.options.env.GEMINI_API_KEY!, model: this.options.env.GEMINI_MODEL!, signal: AbortSignal.any([active.signal, this.lifetime.signal, AbortSignal.timeout(25000)]) });
+      const tutorInput = { session: context, text, selectedNodeId, selection, apiKey: this.options.env.GEMINI_API_KEY!, model: this.options.env.GEMINI_MODEL!, signal: AbortSignal.any([active.signal, this.lifetime.signal, AbortSignal.timeout(65000)]) };
+      const result = await (this.options.tutorWithPrincipal ? this.options.tutorWithPrincipal(tutorInput, this.ticket.principal) : this.options.tutor(tutorInput));
       if (!valid()) return;
       const beats = planTeachingBeats(context, result, turnId, generationEpoch);
       await this.options.store.locked(this.ticket.sessionId, async () => {
         const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
         if (!valid() || session.status !== 'active') return;
+        if (context?.citations) session.citations = context.citations;
         appendTeachingBeats(session, beats, new Date(this.options.now()).toISOString(), true);
         await this.save(session); this.snapshot(session);
       });
@@ -455,8 +476,9 @@ class VoiceConnection {
     const valid = () => !this.closed && !this.paused && !controller.signal.aborted && this.epoch === stream.epoch && !stream.cancelled && this.generation === controller && this.currentStream === stream;
     this.state('speaking'); this.emit({ type: 'audio.start', streamId: stream.id, turnId, messageId, beatId, visualReady, sampleRate: 24000 });
     try {
+      const speechSession = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       synth = await (this.options.voice?.createSynthesizer ?? createSynthesizer)({
-        apiKey: this.options.env.ASSEMBLYAI_API_KEY!, voiceId: this.options.env.ASSEMBLYAI_VOICE_ID, signal: this.lifetime.signal,
+        apiKey: this.options.env.ASSEMBLYAI_API_KEY!, voiceId: speechSession.settings?.preferences.voiceId ?? this.options.env.ASSEMBLYAI_VOICE_ID, language: speechSession.settings?.preferences.language, signal: this.lifetime.signal,
         onAudio: pcm => {
           if (!valid() || stream.providerDone) return;
           if (pcm.byteLength % 2) throw new ApiError(503, 'INVALID_AUDIO', 'Speech returned invalid audio.');
@@ -547,12 +569,13 @@ class VoiceConnection {
     const synthesizer = this.synthesizer; this.synthesizer = undefined;
     synthesizer?.close();
   }
+  async settleClosing() { if (this.closed) await this.closeWork; }
   close(reason: string): Promise<void> {
     if (this.closeWork) return this.closeWork;
     const old = this.cancelNow(reason); this.state('ended'); this.closed = true;
-    this.lifetime.abort(); if (this.timer) clearInterval(this.timer);
+    this.lifetime.abort(); if (this.timer) clearInterval(this.timer); if (this.leaseTimer) clearInterval(this.leaseTimer);
     this.socket.close(1000, reason.slice(0, 100));
-    this.closeWork = (async () => { await this.markInterrupted(old); await this.closeProviders(); this.release(); })();
+    this.closeWork = (async () => { try { await this.markInterrupted(old); } finally { await this.closeProviders(); await this.options.store.releaseFence(`voice:${this.ticket.principal.ownerId}`, this.ticket.fence!).catch(() => undefined); this.release(); } })().catch(() => undefined);
     return this.closeWork;
   }
 }

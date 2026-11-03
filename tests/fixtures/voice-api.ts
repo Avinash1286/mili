@@ -9,13 +9,17 @@ import type { TranscriberInput, SynthesizerInput, SpeakOptions } from '../../pac
 import { DELAYED_VISUAL_REQUEST, VISUAL_REQUEST, visualReply } from './teaching.js';
 import { SPATIAL_REQUEST, SPATIAL_SEQUENCE_REQUEST, spatialReply } from './spatial.js';
 import { resolveSpatialSelection } from '../../packages/contracts/src/index.js';
+import { FileStore } from '../../packages/db/src/index.js';
+import { fixtureWorker, productProviders } from './product.js';
 
 async function main() {
 const directory = await mkdtemp(path.join(tmpdir(), 'tokai-voice-e2e-'));
+const store = new FileStore(directory), jobSecret = 'isolated-e2e-jobs-only-not-a-production-secret';
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const app = await createApp({
-  dataDir: directory, rateLimit: false,
-  env: { GEMINI_API_KEY: 'test-gemini-key', GEMINI_MODEL: 'fixture-model', ASSEMBLYAI_API_KEY: 'test-speech-key' },
+  dataDir: directory, store, rateLimit: false,
+  env: { GEMINI_API_KEY: 'test-gemini-key', GEMINI_MODEL: 'fixture-model', ASSEMBLYAI_API_KEY: 'test-speech-key', TOKAI_JOB_SECRET: jobSecret },
+  learning: productProviders,
   // Explicitly replace the HTTP speech route too, so every fixture path is offline.
   speech: async () => {
     const audio = Buffer.alloc(44 + 4800);
@@ -93,8 +97,10 @@ const app = await createApp({
   }
 });
 await app.listen({ host: '127.0.0.1', port: 4100 });
+const stopWorker = fixtureWorker(app, store, jobSecret);
 console.log('Tokai E2E fixture API ready: simulated providers only, port 4100.');
 async function shutdown() {
+  await stopWorker();
   await app.close();
   const resolved = path.resolve(directory), tempRoot = path.resolve(tmpdir()) + path.sep;
   if (!resolved.startsWith(tempRoot) || !path.basename(resolved).startsWith('tokai-voice-e2e-')) throw new Error('Unexpected fixture cleanup path');

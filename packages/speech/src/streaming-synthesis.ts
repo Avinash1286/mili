@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import type WebSocket from 'ws';
-import { SpeechError } from './synthesis.js';
+import { SpeechError, validateLanguage, type SpeechLanguage } from './synthesis.js';
 import { aborted, connectSocket, disposeSocket, nonnegativeInteger, parseFrame, protocolError, providerError,
   record, sendJson, sessionInfo, settings, validateKey, validateVoice,
   type StreamingDependencies, type StreamingSettings } from './transport.js';
@@ -14,7 +14,7 @@ export interface SynthesisBoundaries extends SynthesisIdentity {
   words: { word: string; startMs: number; endMs: number; confidence: number }[];
 }
 export interface SynthesizerInput {
-  apiKey: string; voiceId?: string; signal?: AbortSignal;
+  apiKey: string; voiceId?: string; language?: SpeechLanguage; signal?: AbortSignal;
   onAudio: (pcm: Uint8Array, identity: SynthesisIdentity) => void;
   onBoundaries?: (frame: SynthesisBoundaries) => void;
   onError: (error: SpeechError) => void;
@@ -40,7 +40,7 @@ const MAX_AUDIO_BYTES = 120 * TTS_SAMPLE_RATE * 2;
 export async function createSynthesizer(input: SynthesizerInput, dependencies: StreamingDependencies = {}): Promise<Synthesizer> {
   validateKey(input.apiKey);
   const voiceId = input.voiceId ?? 'aai-audrey';
-  validateVoice(voiceId);
+  validateVoice(voiceId); validateLanguage(input.language ?? 'english');
   if (input.signal?.aborted) throw aborted();
   const config = settings(dependencies);
   let closed = false, active: Request | undefined;
@@ -83,7 +83,7 @@ export async function createSynthesizer(input: SynthesizerInput, dependencies: S
 function startRequest(input: SynthesizerInput, voiceId: string, text: string, options: SpeakOptions,
   dependencies: StreamingDependencies, config: StreamingSettings): Request {
   const url = new URL('wss://tts.us.assemblyai.com/v1/ws');
-  url.search = new URLSearchParams({ voice_id: voiceId, model_id: 'assemblyai-tts-1', language: 'english',
+  url.search = new URLSearchParams({ voice_id: voiceId, model_id: 'assemblyai-tts-1', language: input.language ?? 'english',
     sample_rate: String(TTS_SAMPLE_RATE), encoding: 'pcm_s16le', word_boundaries: 'true', inactivity_timeout: '30' }).toString();
   let ws: WebSocket;
   try { ws = connectSocket(url, input.apiKey, dependencies, config); } catch { throw providerError(); }
@@ -146,7 +146,7 @@ function startRequest(input: SynthesizerInput, voiceId: string, text: string, op
         if (began) throw protocolError();
         const info = sessionInfo(frame), c = info.configuration;
         if (c.sample_rate !== TTS_SAMPLE_RATE || c.encoding !== 'pcm_s16le' || c.model !== 'assemblyai-tts-1'
-            || c.language !== 'english' || typeof c.voice_id !== 'string' || c.voice_id.toLowerCase() !== voiceId.toLowerCase()
+            || c.language !== (input.language ?? 'english') || typeof c.voice_id !== 'string' || c.voice_id.toLowerCase() !== voiceId.toLowerCase()
             || c.word_boundaries !== true || !record(c.limits)) throw protocolError();
         const maxText = c.limits.max_generate_text_length, maxBuffered = c.limits.text_max_buffer_chars;
         if (!nonnegativeInteger(maxText) || maxText < 1 || !nonnegativeInteger(maxBuffered) || maxBuffered < 1) throw protocolError();

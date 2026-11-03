@@ -1,4 +1,4 @@
-import { layoutDiagram, SPATIAL_CATALOG, type DiagramSpec, type Session, type SelectionContext, type SpatialSelection } from '@tokai/contracts';
+import { layoutDiagram, SPATIAL_CATALOG, type Topic, type DiagramSpec, type Session, type SelectionContext, type SpatialSelection } from '@tokai/contracts';
 import { LESSONS, sampleReply } from './lessons.js';
 import { plainTeachingBeat, splitTeachingText, validateTeachingPlan } from './teaching.js';
 import type { TutorReply } from './types.js';
@@ -30,7 +30,7 @@ export function sampleTeachingReply(session: Session, text: string, selectedNode
   if (spatial) return spatial;
   const explanation = sampleReply(session, text, selectedNodeId);
   if (!/\b(diagram|draw|visual|show me)\b/i.test(text)) return { text: explanation };
-  const lesson = LESSONS[session.topic], prefix = `sample-${session.topic}`;
+  const lesson = LESSONS[session.topic as Topic], prefix = `sample-${session.topic}`;
   const spec: DiagramSpec = session.topic === 'fractions' ? {
     id: `${prefix}-frame`, title: 'Prepared sample: equivalent fractions', template: 'fraction',
     nodes: [

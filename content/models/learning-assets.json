@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "embedding": {
+    "model": "onnx-community/all-MiniLM-L6-v2-ONNX",
+    "revision": "aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f",
+    "dimensions": 384,
+    "license": "Apache-2.0",
+    "language": "English"
+  },
+  "ocr": {
+    "model": "tessdata_fast/eng",
+    "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+    "license": "Apache-2.0"
+  },
+  "assets": [
+    {
+      "path": "minilm/config.json",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/config.json",
+      "bytes": 794,
+      "sha256": "fe5da868b77bdb104140822a5af0837cb6450ad6de8ff3dfcc8dd44ddd3e3ae7"
+    },
+    {
+      "path": "minilm/tokenizer.json",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/tokenizer.json",
+      "bytes": 533808,
+      "sha256": "07805d116826679de90b4edeb2222269c4b8753bc0981be4399f732b2708e904"
+    },
+    {
+      "path": "minilm/tokenizer_config.json",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/tokenizer_config.json",
+      "bytes": 1463,
+      "sha256": "e10bb633ba0d7f69ed342ae7de607f36b39ce53b455fbda69c71700bf57e6f66"
+    },
+    {
+      "path": "minilm/special_tokens_map.json",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/special_tokens_map.json",
+      "bytes": 695,
+      "sha256": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a"
+    },
+    {
+      "path": "minilm/vocab.txt",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/vocab.txt",
+      "bytes": 231508,
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "path": "minilm/onnx/model.onnx",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/onnx/model.onnx",
+      "bytes": 56796,
+      "sha256": "2f019cf6217537cc4bfc7f5192f21dea1e18445177edaab0bc6163a813e5c7a1"
+    },
+    {
+      "path": "minilm/onnx/model.onnx_data",
+      "url": "https://huggingface.co/onnx-community/all-MiniLM-L6-v2-ONNX/resolve/aff7a1dc4e8a1ea593e6ea21e95c22ef0a25966f/onnx/model.onnx_data",
+      "bytes": 90261504,
+      "sha256": "60c758432aa596c30a122942dfe594c457d4d713f890926f1c5f920bd496c8de"
+    },
+    {
+      "path": "ocr/eng.traineddata",
+      "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/eng.traineddata",
+      "bytes": 4113088,
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+    },
+    {
+      "path": "ocr/LICENSE",
+      "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  ]
+}

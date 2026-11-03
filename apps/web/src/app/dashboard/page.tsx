@@ -1,2 +1,2 @@
-import { Home } from '@/components/Home';
-export default function DashboardPage() { return <Home />; }
+import { LearningHome } from '@/components/product/LearningHome';
+export default function DashboardPage() { return <LearningHome />; }

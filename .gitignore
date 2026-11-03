@@ -15,3 +15,5 @@ var/probes/
 
 # Fetch pinned model weights locally; keep their manifest and source URL tracked.
 apps/web/public/vendor/mediapipe/gesture_recognizer.task
+.tokai-models/
+.convex/

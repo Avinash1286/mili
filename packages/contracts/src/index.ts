@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { SessionSettingsSchema, LessonPlanSchema, CitationSchema } from './product';
+export * from './product';
+export * from './learning';
 import { SpatialSelectionSchema } from './spatial';
 import { BoardSchema, SelectionContextSchema, ConceptMapSchema, TeachingBeatSchema, LessonFocusSchema } from './scene';
 export * from './scene';
@@ -11,10 +14,11 @@ export const MessageSchema = z.object({ id: z.string(), role: z.enum(['student',
 export const ConceptSchema = z.object({ id: z.string(), label: z.string(), status: z.enum(['introduced', 'practicing', 'needs-help', 'understood']) });
 export const FlashcardSchema = z.object({ id: z.string(), front: z.string(), back: z.string(), conceptId: z.string() });
 export const SessionSchema = z.object({
-  id: z.string(), topic: TopicSchema, title: z.string(), mode: LessonModeSchema,
+  id: z.string(), topic: z.string().min(1).max(160), title: z.string(), mode: LessonModeSchema,
   status: z.enum(['active', 'ended']), createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
   revision: z.number().int().nonnegative(), messages: z.array(MessageSchema), board: BoardSchema,
   concepts: z.array(ConceptSchema), flashcards: z.array(FlashcardSchema), summary: z.string().optional(),
+  settings: SessionSettingsSchema.optional(), plan: LessonPlanSchema.optional(), citations: z.array(CitationSchema).max(80).optional(), archived: z.boolean().optional(), notes: z.string().max(20000).optional(),
   visualSurface: z.enum(['board','spatial']).optional(), spatialState: SpatialSelectionSchema.optional(), conceptMap: ConceptMapSchema.optional(), teachingBeats: z.array(TeachingBeatSchema).max(200).optional(), lessonFocus: LessonFocusSchema.optional(),
   boardOperations: z.array(z.object({ operationId: z.string().max(100), hash: z.string().max(128), revision: z.number().int().nonnegative() })).max(100).optional()
 });

@@ -5,6 +5,15 @@
 **Target event:** [AssemblyAI — Voice hackathon week: Hack into speech](https://luma.com/msrwwjby).  
 **Scope:** Build the complete Tokai learning application from a clean product architecture, using the existing prototype as a reference and preserving its provenance. This is an implementation specification, not a claim that the features already work.
 
+## Current implementation decisions (user instructions, 3 November 2026)
+
+The user has updated the infrastructure choices while retaining the complete product scope:
+
+- **Convex is the database and durable AI background-job platform.** Use transactional Convex functions, scheduled actions, owner-scoped storage, job receipts/retries and native file storage. PostgreSQL/Drizzle/pgvector and Redis/BullMQ references below describe the original proposal and are superseded by equivalent Convex implementations.
+- Complete and verify the application locally first. After completion, deploy the **website to Vercel** and use Vercel's deployment/build workflow. **Do not add GitHub Actions.** Current Vercel Functions support WebSockets; the selected release design hosts Fastify as a Node service with bounded connection rotation, private file transfers and durable Convex coordination. Linux native processing and free-plan deployment limits must pass release checks before publishing.
+- Continue and push each completed implementation phase. Phases 3 and 4 have been pushed at `1baa9f4` and `7ffa8a1` respectively.
+- Demo videos, submission materials and organizer submission remain deferred. Preserve the existing free-account preference; no billing upgrades or paid fallback.
+
 ## 1. Product direction and hackathon fit
 
 Build **Tokai: a voice-first AI tutor that speaks, draws, listens, and checks understanding together**.
@@ -178,16 +187,16 @@ Use the existing forest-green/cream Tokai identity, readable typography, and res
 | Workspace | pnpm workspaces, TypeScript, committed lockfile | Shared contracts and predictable AI-agent integration |
 | Web | Next.js App Router, React, Tailwind, accessible headless primitives | Existing team/repository familiarity and rich client workspace |
 | API + voice runtime | Long-running Node.js service using Fastify and WebSockets | Own the audio lifecycle, cancellation, authenticated sessions and backpressure |
-| Background worker | Separate Node process, BullMQ/Redis jobs | Summaries, ingestion, audio exports and retries without delaying voice |
+| Background jobs | Convex scheduled actions with durable receipts and bounded retries | Summaries, ingestion, audio exports and retries without delaying voice; bounded local compute handles native parsing |
 | Speech | AssemblyAI streaming STT + AssemblyAI streaming TTS | Central sponsor integration with independently controlled tutoring |
 | Tutor/vision model | Gemini via current server-side SDK, configurable model IDs | Structured tool calls and multimodal grounding; preserve conceptual fit |
 | Board | tldraw behind `BoardAdapter` | Editable shapes, selection, drawing, persistence and export |
 | Concept map | React Flow + Dagre initially | Graph rendering with deterministic layout |
 | Spatial scenes | Three.js / React Three Fiber + glTF loader | Interactive, semantic 3D model catalog |
 | Gestures | MediaPipe in browser, worker where supported | Webcam frames need not leave the device |
-| Database | PostgreSQL + Drizzle migrations; pgvector for source retrieval | Durable relational learning records and source indexing |
+| Database | Convex transactional document database and vector indexes | Durable owner-scoped learning records, events, fencing and source retrieval |
 | Authentication | Managed OIDC provider; server-verified sessions plus scoped guest sessions | Avoid writing password storage; provider selected/configured in foundation |
-| Assets | Private S3-compatible object storage and signed URLs | Documents, board assets, exports and opted-in audio |
+| Assets | Convex native file storage behind authorized download routes | Private documents, exports and opted-in recap audio |
 | Testing | Vitest, Playwright, axe, integration containers and recorded protocol fixtures | Contracts, real browser audio state, isolation and accessibility |
 | Operations | OpenTelemetry-compatible traces, structured logs, error reporting | Correlate latency, failures, cost, and turn outcomes |
 

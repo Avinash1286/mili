@@ -21,27 +21,29 @@ function diagnosticMetadata(diagnostics?: TutorError['diagnostics']) {
   };
 }
 
+let attemptStarted: number | undefined;
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (!args.length) {
-    console.log('No provider call made. Opt in with: pnpm exec tsx scripts/verify-teaching.ts --live [--rounds=2]');
+    console.log('No provider call made. Opt in with: pnpm exec tsx scripts/verify-teaching.ts --live [--rounds=2] [--timeout=45000]');
     console.log('The live probe defaults to one Gemini request. --rounds=2 explicitly permits one tool-result follow-up. No repairs or speech requests.');
     return;
   }
-  if (!args.includes('--live') || args.some(arg => !['--live', '--rounds=2'].includes(arg)) || new Set(args).size !== args.length) {
-    throw new TutorError('INVALID_PROBE_ARGUMENTS', 'Use --live, optionally with --rounds=2, to opt into the bounded teaching probe.');
+  if (!args.includes('--live') || args.some(arg => !['--live', '--rounds=2', '--timeout=45000'].includes(arg)) || new Set(args).size !== args.length) {
+    throw new TutorError('INVALID_PROBE_ARGUMENTS', 'Use --live, optionally with --rounds=2 and --timeout=45000, to opt into the bounded teaching probe.');
   }
   const maxModelCalls = args.includes('--rounds=2') ? 2 : 1;
+  const requestTimeoutMs = args.includes('--timeout=45000') ? 45000 : 25000;
   try { loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url))); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const apiKey = process.env.GEMINI_API_KEY, model = process.env.GEMINI_MODEL;
   if (!apiKey || !model) throw new TutorError('TUTOR_UNAVAILABLE', 'Set GEMINI_API_KEY and GEMINI_MODEL in the local root .env before the live probe.');
   const session = createLesson({ id: randomUUID(), topic: 'photosynthesis', mode: 'live', now: new Date().toISOString(), messageId: randomUUID() });
-  const started = performance.now();
+  const started = performance.now(); attemptStarted = started;
   const reply = await generateTutorReply({
     session, apiKey, model,
     text: `Call draw_shapes to add a small process diagram with two new objects: sunlight energy and sugar production. Use stable IDs probe-light and probe-sugar and the current board revision. Then call submit_teaching_beat to explain the diagram in one short sentence and ask one question. ${maxModelCalls === 1 ? 'Submit both tool calls in this same response; this probe permits only one model response.' : 'Use the same response when possible; this probe permits at most one follow-up to consume the drawing tool result and submit the beat.'} Do not call any external service or update mastery.`,
-    signal: AbortSignal.timeout(30_000), limits: { maxModelCalls, maxRepairAttempts: 0 },
+    signal: AbortSignal.timeout(requestTimeoutMs + 5000), limits: { maxModelCalls, maxRepairAttempts: 0, requestTimeoutMs },
   });
   const diagnostics = reply.diagnostics;
   console.log(JSON.stringify({ provider: 'Gemini', maxModelCalls, ...diagnosticMetadata(diagnostics), warningsCount: reply.warnings?.length ?? 0,
@@ -67,8 +69,9 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   if (error instanceof TutorError && (error.diagnostics || error.providerStatus !== undefined)) {
-    console.error(JSON.stringify({ provider: 'Gemini', validated: false,
+    console.error(JSON.stringify({ provider: 'Gemini', validated: false, elapsedMs: attemptStarted === undefined ? null : Math.round(performance.now() - attemptStarted),
       providerStatus: Number.isInteger(error.providerStatus) && error.providerStatus! >= 400 && error.providerStatus! < 600 ? error.providerStatus : null,
+      errorName: error.errorName ?? null, failureCategory: error.failureCategory ?? null,
       ...diagnosticMetadata(error.diagnostics) }));
   }
   console.error(error instanceof TutorError ? `${error.code}: ${error.message}` : 'The teaching probe failed. Check local configuration and account access.');

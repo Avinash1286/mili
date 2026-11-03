@@ -164,4 +164,15 @@ describe('live tutor provider boundary', () => {
     expect(issues!.length).toBeLessThanOrEqual(6);
     expect(JSON.stringify(result.diagnostics)).not.toMatch(/123456789|secret_private_field|private-argument-text/);
   });
+  it('classifies SDK timeout errors safely and bounds an explicitly shortened request deadline', async () => {
+    generateContent.mockRejectedValue(Object.assign(new Error('private transport details'), { name: 'TimeoutError' }));
+    await expect(generateTutorReply(input())).rejects.toMatchObject({ code: 'TUTOR_TIMEOUT', errorName: 'TimeoutError' });
+    vi.useFakeTimers();
+    try {
+      generateContent.mockImplementation(() => new Promise(() => {}));
+      const pending = generateTutorReply({ ...input(), limits: { requestTimeoutMs: 1000, maxModelCalls: 1 } });
+      const rejected = expect(pending).rejects.toMatchObject({ code: 'TUTOR_TIMEOUT', diagnostics: { modelCalls: 1 } });
+      await vi.advanceTimersByTimeAsync(1001); await rejected;
+    } finally { vi.useRealTimers(); }
+  });
 });

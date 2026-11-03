@@ -11,5 +11,5 @@ export type TutorReply = {
   text: string; board?: Board; beats?: TeachingBeatProposal[]; warnings?: string[];
   diagnostics?: TutorDiagnostics;
 };
-export type TutorInput = { session: Session; text: string; selectedNodeId?: string; selection?: SelectionContext; apiKey: string; model: string; signal?: AbortSignal; limits?: { maxModelCalls?: number; maxRepairAttempts?: number } };
+export type TutorInput = { session: Session; text: string; selectedNodeId?: string; selection?: SelectionContext; apiKey: string; model: string; signal?: AbortSignal; limits?: { maxModelCalls?: number; maxRepairAttempts?: number; requestTimeoutMs?: number } };
 export type GenerateReply = (input: TutorInput) => Promise<TutorReply>;

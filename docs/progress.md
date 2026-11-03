@@ -110,7 +110,7 @@ The direct Gemini plus AssemblyAI architecture and existing free-account prefere
 
 ## Phase 4 — gestures and spatial lessons
 
-Status: implemented and checked locally; publishing authorized by the user. Physical hand-recognition and combined real-device audio/graphics measurements remain unverified.
+Status: implemented, checked locally and pushed at `7ffa8a1`. Physical hand-recognition and combined real-device audio/graphics measurements remain unverified.
 
 ### Delivered
 
@@ -134,12 +134,30 @@ Checks exposed and corrected a Windows Vitest glob issue, incompatible worker WA
 
 ## Current delivery scope
 
-The user selected **local deployment** and asked for the complete functional project, including fixes to original feature gaps. Hosting, submission, demo videos and other presentation materials are explicitly deferred. Complete and verify each implementation phase locally, then push it to GitHub; separate manual approval is no longer required for each push. Physical-device and human curriculum validation cannot be inferred from automated fixtures.
+The user authorized completing all remaining phases and pushing each checked phase without another approval. Their latest infrastructure choices are **Convex for persistence and durable AI jobs**, followed by **Vercel for the website after local completion**, with **no GitHub Actions**. The persistent Fastify voice/API process needs a compatible backend destination; frontend hosting alone does not supply it. Demo videos and hackathon submission work remain deferred. No account billing upgrades or paid provider fallbacks are authorized.
 
-## Following phases (authorized to proceed sequentially)
+## Phase 5 — durable learning
 
-1. **Phase 4 — gestures and spatial lessons:** local MediaPipe, calibration, accessible alternatives, licensed 3D catalog and part selection.
-2. **Phase 5 — durable learning:** accounts/PostgreSQL where not already delivered, source upload/retrieval, assessments, mastery evidence, scheduled reviews, summaries/recaps, exports and sharing.
-3. **Phase 6 — local release readiness:** accessibility/security/fault checks, capacity/resource measurements, local deployment/restore and operating documentation. Public hosting, demonstration and submission remain deferred by the user.
+Status: implemented and checked locally; publishing authorized. The Convex service boundary, transactional owner-scoped records and private files, durable scheduled jobs with fence checks, native local Convex and OIDC services, source ingestion, authored/generated assessments, evidence-based progress, cards/review scheduling, study packs, exports, sharing and product screens are functional. Deployment hardening and public hosting remain Phase 6 work.
 
-These are reviewable delivery increments across the full imp.md dependency graph. They do not remove planned work. Run the relevant checks and record results before each phase's GitHub push.
+- Native local Convex runs without Docker or a cloud account. Persistence, concurrent rollback, private storage and 384-dimensional owner-filtered retrieval have passed scoped integration tests.
+- Six existing Phase 1–4 lessons and ten guest/auth records were imported idempotently with timestamped local backups. Original files remain unchanged; normalized snapshots match the originals.
+- Local English OCR and pinned CPU embeddings passed an actual image-to-text-to-vector probe. The real Convex scheduled-action journey then uploaded a three-page PDF containing text and a scanned page, extracted three indexed chunks, retrieved the scanned page with a 384-dimensional query, denied a different owner, and deleted the isolated probe owner/files successfully.
+- Learning engine, generated-content schema adapters and durable artifact tests cover grading uncertainty, assistance, idempotency, stale leases, deletion races, caption timing, transcript retention and Unicode PDF extraction.
+- Browser scenarios exercise preferences/history, numeric/diagram practice, hints/retries/appeals, study packs/export/sharing, card review, responsive controls and dictation cleanup. The integrated run passed 27 of 29 cases and exposed two UI races: a failed health read disabled voice indefinitely, and delayed preferences overwrote a typed goal. Both were fixed. All eight product scenarios plus camera denial passed the focused rerun, and both added race regressions passed their final run. Across these runs all 31 current Chromium scenarios passed; this is not a claim of one final 31-case run.
+- Actual local Keycloak/OIDC sign-in and guest claim passed its integration test. Eight real local Convex integration cases passed in addition to the isolated-file unit tests; the Convex restart retained imported snapshots.
+- A real Gemini structured-teaching request passed with one model call, four board commands and one teaching beat in 36,954 ms. This resolves the earlier Phase 3 provider-functionality blocker while leaving conversational latency and human/device quality validation open. See [provider evidence](phase-5-provider-check.md).
+- Final review corrected immediate transcript/recap revocation, cookie-token upload leakage, source-only sample leakage, spoken-recall regeneration, stale appeal exports/shares, and preference propagation through the home-page shortcut. The PDF export was rasterized and visually inspected with embedded Unicode font coverage.
+
+### Final engineering checks
+
+- `pnpm typecheck` passed for all workspaces, root tooling and Convex functions.
+- `pnpm test` passed **308 tests**: contracts 28, speech 47, web/worklet 67, database 10, learning 33, tutor 49, grounding 4 and API 70. Nine external-service cases are opt-in in this command; all eight actual Convex cases and the actual OIDC case passed separately as described above.
+- `pnpm build` passed after the final integration fixes. Desktop/mobile product screenshots and the rendered PDF were inspected.
+- `pnpm check:secrets --staged` scanned 169 changed/new files against seven configured credential values and private-key markers: zero findings. No GitHub Actions files were added.
+
+The free-account preference remains unchanged. Live model latency, spoken teaching quality, subject-matter review by independent people, physical camera/microphone behavior and Safari/iOS/screen-reader checks remain explicit validation limits. Automated synthetic audio, injected provider fixtures and deterministic grading tests do not establish human learning outcomes or real speech recognition accuracy. Source OCR currently supports English. See [testing guidance](phase-5-testing.md), [local architecture](phase-5-architecture.md) and [live provider evidence](phase-5-provider-check.md).
+
+## Phase 6 — release readiness (pending)
+
+Complete accessibility/security/fault checks, bounded capacity/resource measurements, actual provider verification, local restore/operating documentation and the final end-to-end journey. Then deploy the website through Vercel and verify its real backend connection. Physical-device and human curriculum validation cannot be inferred from automated fixtures.

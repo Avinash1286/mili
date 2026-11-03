@@ -29,7 +29,7 @@ export function validateTeachingPlan(session: Session, proposals: TeachingBeatPr
   if (!proposals.length || proposals.length > 2) throw new TutorError('INVALID_TEACHING_PLAN', 'A response must contain one or two short teaching steps.');
   let board = structuredClone(session.board), map = structuredClone(session.conceptMap ?? emptyConceptMap(session.topic));
   let spatial = groundSpatialSelection(session.spatialState);
-  const sources = new Set(session.board.nodes.flatMap(node => node.sourceRefs ?? []));
+  const sources = new Set([...session.board.nodes.flatMap(node => node.sourceRefs ?? []), ...(session.citations ?? []).flatMap(citation => [citation.id, citation.chunkId])]);
   const messages = new Set(session.messages.map(message => message.id)), cards = new Set(session.flashcards.map(card => card.id));
   return proposals.map((raw, index) => {
     const beat = TeachingBeatProposalSchema.parse(raw);

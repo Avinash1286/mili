@@ -1,0 +1,21 @@
+import type { LearningSourceRef, StudyPack } from '@tokai/contracts';
+import { LearningDiagram } from './LearningDiagram';
+import styles from './Product.module.css';
+
+export function SourceReferences({ sources }: { sources: LearningSourceRef[] }) {
+  if (!sources.length) return null;
+  return <ul>{sources.map((source, index) => <li key={`${source.sourceId}-${index}`}>{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.title}</a> : source.title}{source.page ? ` · page ${source.page}` : ''}{source.section ? ` · ${source.section}` : ''}{source.snippet && <p>{source.snippet}</p>}</li>)}</ul>;
+}
+
+export function StudyPackContent({ pack, includeCards = false }: { pack: StudyPack; includeCards?: boolean }) {
+  return <div className={styles.prose}>
+    <section className={styles.panel}><h2>Your lesson, gathered.</h2><p className={styles.muted}>Generated {new Date(pack.generatedAt).toLocaleString()} · version {pack.version}. Completed narration is listed separately from reference material and interrupted playback.</p>{pack.objectives.length > 0 && <><h3>The ideas you set out to explore</h3><ul>{pack.objectives.map(item => <li key={item.id}>{item.text}</li>)}</ul></>}{pack.completedNarration.length > 0 ? <><h3>Completed narration</h3>{pack.completedNarration.map(item => <p key={item.beatId}>{item.text}</p>)}</> : <p>No completed audio narration is recorded for this lesson. Typed answers and the reference material below remain available.</p>}{pack.partialNarration.length > 0 && <p>{pack.partialNarration.length} interrupted narration {pack.partialNarration.length === 1 ? 'segment is' : 'segments are'} excluded from completed narration.</p>}{pack.recap.text && <><h3>Recap</h3><p style={{ whiteSpace: 'pre-wrap' }}>{pack.recap.text}</p></>}</section>
+    {pack.referenceConcepts.length > 0 && <section className={styles.panel}><h2>Reference concepts</h2><p className={styles.muted}>These are study references. Their inclusion does not mean you have mastered or heard every concept.</p>{pack.referenceConcepts.map(concept => <details key={concept.id} style={{ margin: '15px 0' }}><summary>{concept.label}</summary><p>{concept.explanation}</p><SourceReferences sources={concept.sourceRefs}/></details>)}</section>}
+    <section className={styles.panel}><h2>Your saved board</h2><LearningDiagram board={pack.board}/>{!pack.board.nodes.length && <p>The saved board has no shapes yet.</p>}</section>
+    {(pack.attempts.length > 0 || pack.mastery.length > 0) && <section className={styles.panel}><h2>What your practice shows</h2>{pack.attempts.map(({ attempt, evaluation }) => <details key={attempt.attemptId} style={{ margin: '15px 0' }}><summary>{evaluation.correctness} · {attempt.assisted ? 'Assisted' : 'Independent'} · {new Date(attempt.submittedAt).toLocaleDateString()}</summary><p>{evaluation.feedback}</p><p>{evaluation.explanation}</p><p>Reasoning: {evaluation.reasoning}. Feedback confidence: {evaluation.confidence}.</p></details>)}{pack.mastery.map(item => <p key={`${item.packId}:${item.conceptId}`}><strong>{pack.referenceConcepts.find(concept => concept.id === item.conceptId)?.label || item.conceptId}</strong> · {item.state}. {item.explanation}</p>)}</section>}
+    {pack.notes && <section className={styles.panel}><h2>Your notes</h2><p style={{ whiteSpace: 'pre-wrap' }}>{pack.notes}</p></section>}
+    {includeCards && !!pack.cards.length && <section className={styles.panel}><h2>Review cards</h2>{pack.cards.filter(card => card.status === 'active').map(card => <details key={card.id} style={{ margin: '16px 0' }}><summary>{card.front}</summary><p>{card.back}</p><p>{card.explanation}</p><SourceReferences sources={card.sourceRefs}/></details>)}</section>}
+    <section className={styles.panel}><h2>Where to go next</h2>{pack.unresolvedQuestions.length > 0 && <><h3>Still wondering</h3><ul>{pack.unresolvedQuestions.map((question, index) => <li key={index}>{question}</li>)}</ul></>}<ul>{pack.recommendations.map((recommendation, index) => <li key={index}>{recommendation}</li>)}</ul><p>{pack.nextLessonSuggestion}</p></section>
+    {!!pack.sourceRefs.length && <section className={styles.panel}><h2>Sources and references</h2><SourceReferences sources={pack.sourceRefs}/></section>}
+  </div>;
+}

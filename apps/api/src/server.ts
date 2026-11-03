@@ -4,6 +4,8 @@ import { createApp } from './app.js';
 
 try { loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url))); }
 catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+try { loadEnvFile(fileURLToPath(new URL('../../../.env.local', import.meta.url))); }
+catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
 const port = Number(process.env.API_PORT ?? 4000);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('API_PORT must be a valid port number.');
 const app = await createApp();

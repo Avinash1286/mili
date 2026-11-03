@@ -108,13 +108,19 @@ export function lessonBoard(topic: Topic): Board {
   };
 }
 
-export function createLesson(input: { id: string; topic: Topic; mode: 'sample' | 'live'; now: string; messageId: string }): Session {
-  const lesson = LESSONS[input.topic];
+export function createLesson(input: { id: string; topic: string; mode: 'sample' | 'live'; now: string; messageId: string }): Session {
+  if (!Object.hasOwn(LESSONS, input.topic)) {
+    if (input.mode === 'sample') throw new Error('Sample lessons require an authored topic.');
+    return { id: input.id, topic: input.topic, title: input.topic, mode: 'live', status: 'active', createdAt: input.now, updatedAt: input.now, revision: 0,
+      messages: [], board: { nodes: [], edges: [], revision: 0 }, concepts: [], flashcards: [],
+      conceptMap: { topicId: input.topic, revision: 0, nodes: [], edges: [] } };
+  }
+  const topic = input.topic as Topic, lesson = LESSONS[topic];
   return {
     id: input.id, topic: input.topic, mode: input.mode, title: TOPICS.find(t => t.id === input.topic)!.title,
     status: 'active', createdAt: input.now, updatedAt: input.now, revision: 0,
     messages: [{ id: input.messageId, role: 'tutor', text: lesson.intro, createdAt: input.now }],
-    board: { ...lessonBoard(input.topic), revision: 0, nodes: lessonBoard(input.topic).nodes.map(node => ({ ...node, author: 'tutor' as const, revision: 0, conceptIds: [node.id] })), edges: lessonBoard(input.topic).edges.map(edge => ({ ...edge, author: 'tutor' as const, revision: 0 })) },
+    board: { ...lessonBoard(topic), revision: 0, nodes: lessonBoard(topic).nodes.map(node => ({ ...node, author: 'tutor' as const, revision: 0, conceptIds: [node.id] })), edges: lessonBoard(topic).edges.map(edge => ({ ...edge, author: 'tutor' as const, revision: 0 })) },
     conceptMap: { topicId: input.topic, revision: 0, nodes: lesson.nodes.map((node, i) => ({ id: node.id, label: node.label, description: node.detail, status: 'introduced' as const, x: (i % 3) * 260, y: Math.floor(i / 3) * 170, author: 'tutor' as const, boardNodeIds: [node.id], cardIds: lesson.cards.flatMap((card, index) => card.conceptId === node.id ? [`${input.topic}-card-${index}`] : []) })), edges: lesson.links.map(([from, to, label], i) => ({ id: `${input.topic}-map-${i}`, from, to, label })) },
     lessonFocus: { goal: TOPICS.find(t => t.id === input.topic)!.description, currentConceptId: lesson.nodes[0]!.id, nextStep: lesson.questions[0]!.prompt, phase: 'diagnose' },
     concepts: lesson.nodes.map(node => ({ id: node.id, label: node.label, status: 'introduced' })),
@@ -123,7 +129,8 @@ export function createLesson(input: { id: string; topic: Topic; mode: 'sample' |
 }
 
 export function sampleReply(session: Session, text: string, selectedNodeId?: string): string {
-  const lesson = LESSONS[session.topic];
+  const lesson = LESSONS[session.topic as Topic];
+  if (!lesson) throw new Error('Sample lessons require an authored topic.');
   // Only an actually asked authored question advances this guide. Greetings,
   // help and board exploration must not consume an assessment slot.
   let questionIndex = 0;

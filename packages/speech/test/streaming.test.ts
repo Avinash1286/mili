@@ -176,6 +176,14 @@ describe('streaming STT wire protocol', () => {
 });
 
 describe('streaming TTS wire protocol', () => {
+  it('sends the selected language and rejects mismatched negotiation before audio', async () => {
+    const p = await provider(socket => send(socket, ttsBegin()));
+    const input = { ...ttsInput(), language: 'spanish' as const };
+    const tts = await createSynthesizer(input, p.dependencies); disposables.push(tts);
+    await expect(tts.speak('Hola.')).rejects.toMatchObject({ code: 'protocol-error' });
+    expect(new URL(p.factory.mock.calls[0]![0]).searchParams.get('language')).toBe('spanish');
+    expect(input.onAudio).not.toHaveBeenCalled();
+  });
   it('negotiates 24k PCM and streams JSON/base64 audio; FlushDone precedes boundary drain', async () => {
     const received: Record<string, unknown>[] = []; let peer!: WebSocket;
     const p = await provider(socket => {

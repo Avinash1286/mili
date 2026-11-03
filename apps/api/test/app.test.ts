@@ -46,10 +46,8 @@ describe('guest lesson API', () => {
       { method: 'DELETE' as const, url: `/v1/sessions/${session.id}` }
     ]) expect((await app.inject({ ...request, headers: headers(b.token) })).statusCode).toBe(404);
     expect((await app.inject({ url: '/v1/sessions', headers: headers(b.token) })).json().sessions).toEqual([]);
-    for (const file of await readdir(path.join(directory, 'guests'))) {
-      expect(file).not.toContain(a.token);
-      expect(await readFile(path.join(directory, 'guests', file), 'utf8')).not.toContain(a.token);
-    }
+    const persisted = await readFile(path.join(directory, 'database.json'), 'utf8');
+    expect(persisted).not.toContain(a.token); expect(persisted).not.toContain(b.token);
   });
   it('expires guest access after seven days', async () => {
     const { token, expiresAt } = await guest(); await lesson(token);

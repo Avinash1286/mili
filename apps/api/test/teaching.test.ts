@@ -101,24 +101,30 @@ describe('durable teaching and board operations', () => {
     expect(saved.teachingBeats?.at(-1)?.warnings?.join(' ')).toContain('board changed');
   });
   it('protects untagged historical work and prevents links to invented lesson artifacts', async () => {
-    const session = await create(), file = path.join(directory, 'sessions', `${session.id}.json`);
-    const record = JSON.parse(await readFile(file, 'utf8'));
+    const session = await create(), file = path.join(directory, 'database.json');
+    await app.close();
+    const database = JSON.parse(await readFile(file, 'utf8'));
+    const record = database.sessions.find((value: { session: Session }) => value.session.id === session.id);
     for (const value of [...record.session.board.nodes, ...record.session.board.edges]) delete value.author;
-    await writeFile(file, JSON.stringify(record));
+    await writeFile(file, JSON.stringify(database));
+    app = await createApp({ dataDir: directory, rateLimit: false, env: { GEMINI_API_KEY: 'fake', GEMINI_MODEL: 'fake' }, tutor: input => tutor(input), vision });
     expect((await get(session.id)).board.nodes.every(value => value.author === 'student')).toBe(true);
     const result = await app.inject({ method: 'PATCH', url: `/v1/sessions/${session.id}/map`, headers: headers(), payload: { expectedRevision: 0, topicId: 'photosynthesis', mode: 'merge', nodes: [{ id: 'x', label: 'Invented reference', status: 'introduced', boardNodeIds: ['other-session-shape'] }], edges: [] } });
     expect(result.statusCode).toBe(400); expect(result.json().code).toBe('INVALID_MAP_REFERENCE');
   });
   it('loads, lists and edits legacy opaque IDs without remapping saved references', async () => {
-    const session = await create(), file = path.join(directory, 'sessions', `${session.id}.json`);
-    const record = JSON.parse(await readFile(file, 'utf8'));
+    const session = await create(), file = path.join(directory, 'database.json');
+    await app.close();
+    const database = JSON.parse(await readFile(file, 'utf8'));
+    const record = database.sessions.find((value: { session: Session }) => value.session.id === session.id);
     const firstId = 'my legacy note', secondId = 'ऊर्जा "light"';
     record.session.board = {
       nodes: [{ ...node, id: firstId }, { ...node, id: secondId, x: 400 }],
       edges: [{ id: 'legacy connection →', from: firstId, to: secondId, label: 'relates to' }]
     };
     delete record.session.conceptMap; delete record.session.lessonFocus; delete record.session.teachingBeats;
-    await writeFile(file, JSON.stringify(record));
+    await writeFile(file, JSON.stringify(database));
+    app = await createApp({ dataDir: directory, rateLimit: false, env: { GEMINI_API_KEY: 'fake', GEMINI_MODEL: 'fake' }, tutor: input => tutor(input), vision });
     const loaded = await get(session.id);
     expect(loaded.board.nodes.map(value => value.id)).toEqual([firstId, secondId]);
     expect(loaded.board.nodes.every(value => value.author === 'student')).toBe(true);
@@ -169,7 +175,7 @@ describe('durable teaching and board operations', () => {
     expect((await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/explain-image`, headers: headers(), payload: { ...payload, image: { mimeType: 'image/png', data: 'A'.repeat(60) } } })).statusCode).toBe(400);
     const result = await app.inject({ method: 'POST', url: `/v1/sessions/${session.id}/explain-image`, headers: headers(), payload });
     expect(result.statusCode).toBe(200); expect(vision).toHaveBeenCalledOnce();
-    expect(await readFile(path.join(directory, 'sessions', `${session.id}.json`), 'utf8')).not.toContain(data);
+    expect(await readFile(path.join(directory, 'database.json'), 'utf8')).not.toContain(data);
     expect(result.json().session.messages.at(-2).text).toContain('Shared a board crop');
   });
 });

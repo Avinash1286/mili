@@ -27,7 +27,7 @@ describe('HTTP speech synthesis', () => {
     expect(options?.redirect).toBe('error');
     expect(options?.headers).toMatchObject({ Authorization: input.apiKey });
     expect(JSON.parse(String(options?.body))).toEqual({
-      text: input.text, voice_id: 'aai-audrey', container: 'wav', stream: false,
+      text: input.text, voice_id: 'aai-audrey', language: 'english', container: 'wav', stream: false,
     });
     expect(JSON.stringify(result)).not.toContain(input.apiKey);
   });

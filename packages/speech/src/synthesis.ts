@@ -31,10 +31,14 @@ export class SpeechError extends Error {
   }
 }
 
+export type SpeechLanguage = 'english' | 'spanish' | 'german' | 'french' | 'italian' | 'portuguese';
+export function validateLanguage(value: unknown): asserts value is SpeechLanguage { if (!['english', 'spanish', 'german', 'french', 'italian', 'portuguese'].includes(String(value))) throw new SpeechError('invalid-input', 'Choose a supported speech language.'); }
+
 export interface SynthesizeSpeechInput {
   text: string;
   apiKey: string;
   voiceId?: string;
+  language?: SpeechLanguage;
   signal?: AbortSignal;
 }
 export interface SpeechResult { audio: Buffer; contentType: 'audio/wav' }
@@ -85,6 +89,7 @@ export async function synthesizeSpeech(
   if (typeof input.apiKey !== 'string' || !input.apiKey.trim() || /[\r\n]/.test(input.apiKey)) {
     throw new SpeechError('not-configured', 'AssemblyAI speech is not configured on the server.');
   }
+  const language = input.language ?? 'english'; validateLanguage(language);
   const voiceId = input.voiceId ?? SPEECH_CAPABILITIES.defaultVoiceId;
   if (typeof voiceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(voiceId)) {
     throw new SpeechError('invalid-input', 'The selected speech voice is invalid.');
@@ -117,7 +122,7 @@ export async function synthesizeSpeech(
     const response = await bounded((dependencies.fetchImpl ?? fetch)(ENDPOINT, {
       method: 'POST',
       headers: { Authorization: input.apiKey.trim(), 'Content-Type': 'application/json', Accept: 'audio/wav' },
-      body: JSON.stringify({ text, voice_id: voiceId, container: 'wav', stream: false }),
+      body: JSON.stringify({ text, voice_id: voiceId, language, container: 'wav', stream: false }),
       redirect: 'error',
       signal: controller.signal,
     }));

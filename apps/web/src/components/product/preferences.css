@@ -1,0 +1,9 @@
+html[data-reduced-motion=true] *,html[data-reduced-motion=true] *::before,html[data-reduced-motion=true] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+html[data-reduced-motion=true]{scroll-behavior:auto!important}
+html[data-font-scale=large] :is(p,li,summary,label,input,select,textarea,button){font-size:18px!important;line-height:1.65}
+html[data-font-scale=large] small{font-size:14px!important;line-height:1.6}
+html[data-high-contrast=true]{--ink:#15351f;--muted:#405638;--line:#a2b38f}
+html[data-high-contrast=true] :is(p,small,label,li,summary){color:#284923}
+html[data-high-contrast=true] nav a{color:#21461b}
+html[data-high-contrast=true] :is(input,select,textarea){color:#183a17;border-color:#65815a}
+html[data-high-contrast=true] :is(button,a,input,select,textarea):focus-visible{outline:3px solid #674500!important;outline-offset:3px}
