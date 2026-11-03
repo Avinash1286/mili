@@ -1,0 +1,12 @@
+{
+  "name": "@tokai/speech",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./epochs": "./src/epochs.ts",
+    "./timing": "./src/timing.ts"
+  },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" }
+}

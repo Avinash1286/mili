@@ -1,0 +1,6 @@
+{
+  "name": "@tokai/tutor-core", "version": "0.1.0", "private": true, "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": { "@tokai/contracts": "workspace:*", "@google/genai": "2.32.0", "zod": "4.6.7" }
+}
