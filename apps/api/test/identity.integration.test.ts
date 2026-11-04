@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { ConvexStore, StoreError, type Principal } from '@tokai/db';
+import { ConvexStore, StoreError, type Principal } from '@milli/db';
 import { registerIdentity } from '../src/identity.js';
 describe.skipIf(process.env.TOKAI_TEST_IDENTITY !== '1')('real local Keycloak and Convex identity', () => {
   it('completes authorization code/PKCE, transfers guest work and revokes the app cookie', async () => {

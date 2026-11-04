@@ -1,4 +1,4 @@
-import type { Board, BoardNode } from '@tokai/contracts';
+import type { Board, BoardNode } from '@milli/contracts';
 
 export type Viewport = { x: number; y: number; zoom: number };
 export type Bounds = { x: number; y: number; width: number; height: number };

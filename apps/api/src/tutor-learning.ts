@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { AssessmentAnswerSchema, PracticeResponseSchema, TutorLearningActionSchema, TutorPracticeStateSchema, type AssessmentAnswer, type AssessmentDefinition, type AssessmentPresentation, type PracticeResponse, type Session, type TutorLearningAction } from '@tokai/contracts';
-import { StoreError, type Principal, type Resource } from '@tokai/db';
-import { applyAssistance, createPresentation, deriveMastery, evaluateAttempt, projectAssessment } from '@tokai/learning';
-import { plainTeachingBeat, type PreparedLearningAction, type TutorLearningContext, type TutorReply } from '@tokai/tutor-core';
-import { createGeminiRubricGrader } from '@tokai/tutor-core/learning';
+import { AssessmentAnswerSchema, PracticeResponseSchema, TutorLearningActionSchema, TutorPracticeStateSchema, type AssessmentAnswer, type AssessmentDefinition, type AssessmentPresentation, type PracticeResponse, type Session, type TutorLearningAction } from '@milli/contracts';
+import { StoreError, type Principal, type Resource } from '@milli/db';
+import { applyAssistance, createPresentation, deriveMastery, evaluateAttempt, projectAssessment } from '@milli/learning';
+import { plainTeachingBeat, type PreparedLearningAction, type TutorLearningContext, type TutorReply } from '@milli/tutor-core';
+import { createGeminiRubricGrader } from '@milli/tutor-core/learning';
 import { liveModels, liveModelsConfigured } from './live-models.js';
 import { definition, definitions, enqueueArtifact, metered, optionalResource, type AttemptRecord, type ProductContext } from './product-context.js';
 

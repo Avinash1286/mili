@@ -3,11 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import WebSocket from 'ws';
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, TeachingBeatProposalSchema, type VoiceServerEvent, type Session } from '@tokai/contracts';
-import type { TranscriberInput, SynthesizerInput, SpeakOptions } from '@tokai/speech';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, TeachingBeatProposalSchema, type VoiceServerEvent, type Session } from '@milli/contracts';
+import type { TranscriberInput, SynthesizerInput, SpeakOptions } from '@milli/speech';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
-import type { TutorInput, TutorReply } from '@tokai/tutor-core';
+import type { TutorInput, TutorReply } from '@milli/tutor-core';
 
 type Received = { events: VoiceServerEvent[]; audio: ReturnType<typeof decodeAudioFrame>[]; ws: WebSocket };
 const origin = 'http://localhost:3000';

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { StudyPackSchema, type LearningCard, type StudyPack, type ShareLink, type AssessmentEvaluation, type Artifact } from '@tokai/contracts';
-import type { Principal } from '@tokai/db';
-import { deriveMastery, reviseCard } from '@tokai/learning';
+import { StudyPackSchema, type LearningCard, type StudyPack, type ShareLink, type AssessmentEvaluation, type Artifact } from '@milli/contracts';
+import type { Principal } from '@milli/db';
+import { deriveMastery, reviseCard } from '@milli/learning';
 import { optionalResource, reflectMastery, type AttemptRecord, type ProductContext } from './product-context.js';
 
 /** Called in the same owner transaction as a correction; immutable attempts remain intact. */

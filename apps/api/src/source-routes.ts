@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { UploadIntentSchema, type Source, type Session, type Citation } from '@tokai/contracts';
-import { StoreError, type Principal, type JobRecord } from '@tokai/db';
-import { validateUpload, MAX_SOURCE_BYTES, ingestSource, embedQuery, EMBEDDING_MODEL } from '@tokai/grounding';
+import { UploadIntentSchema, type Source, type Session, type Citation } from '@milli/contracts';
+import { StoreError, type Principal, type JobRecord } from '@milli/db';
+import { validateUpload, MAX_SOURCE_BYTES, ingestSource, embedQuery, EMBEDDING_MODEL } from '@milli/grounding';
 import { principal, parse, optionalResource, type ProductContext } from './product-context.js';
 import { usesAccountCookie } from './identity.js';
 

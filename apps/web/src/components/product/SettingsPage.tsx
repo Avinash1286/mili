@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LearnerPreferencesSchema, type LearnerPreferences, type Identity } from '@tokai/contracts';
+import { LearnerPreferencesSchema, type LearnerPreferences, type Identity } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
 import { ProductShell, StatusMessage } from './ProductShell';
 import { PreferenceFields } from './PreferenceFields';

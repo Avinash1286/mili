@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { applyBoardTransaction, pruneMapBoardReferences, SceneError, type BoardTransaction, type Session } from '@tokai/contracts';
+import { applyBoardTransaction, pruneMapBoardReferences, SceneError, type BoardTransaction, type Session } from '@milli/contracts';
 import { ApiError } from './store.js';
 
 export function sceneFailure(error: unknown): ApiError {

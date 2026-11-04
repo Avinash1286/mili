@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Check, Expand, Eye, Focus, HelpCircle, LoaderCircle, Pause, Play, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
-import { SPATIAL_CATALOG, getSpatialModel, spatialModelForTopic, type SpatialSelection } from '@tokai/contracts';
+import { SPATIAL_CATALOG, getSpatialModel, spatialModelForTopic, type SpatialSelection } from '@milli/contracts';
 import type { SpatialInteractionAdapter, SpatialLabel, SpatialRenderer } from '@/lib/spatial/renderer';
 import { SpatialDiagram } from './SpatialDiagram';
 import styles from './SpatialViewer.module.css';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { AssessmentAnswer, AssessmentDefinition, MasteryEvidence, RubricJudgment, TeachingBeat } from '@tokai/contracts';
-import { AssessmentDefinitionSchema, LearningCardTemplateSchema } from '@tokai/contracts';
+import type { AssessmentAnswer, AssessmentDefinition, MasteryEvidence, RubricJudgment, TeachingBeat } from '@milli/contracts';
+import { AssessmentDefinitionSchema, LearningCardTemplateSchema } from '@milli/contracts';
 import { applyAssistance, buildStudyPack, createCardSchedule, createPresentation, createReviewReceipt, deriveMastery, dueCards, evaluateAttempt, exportCardsCsv, exportCardsJson, exportStudyPackMarkdown, getLessonPack, gradeDeterministic, instantiatePackCards, invalidateMasteryEvidence, listLessonPacks, mergeDuplicateCards, parseNumeric, projectAssessment, reviseCard, reviseEvaluation, scheduleReview, validateLessonPack } from '../src';
 
 const NOW = '2026-11-03T12:00:00.000Z';

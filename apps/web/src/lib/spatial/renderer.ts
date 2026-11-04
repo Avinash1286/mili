@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { SpatialModel } from '@tokai/contracts';
+import type { SpatialModel } from '@milli/contracts';
 
 export type SpatialInteractionAdapter = {
   orbit: (dx: number, dy: number) => void; zoom: (factor: number) => void; reset: () => void;

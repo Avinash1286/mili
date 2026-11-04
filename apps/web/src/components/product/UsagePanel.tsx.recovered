@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { UsageKind, UsageSummary } from '@tokai/contracts';
+import type { UsageKind, UsageSummary } from '@milli/contracts';
 import { StatusMessage } from './ProductShell';
 import styles from './Product.module.css';
 import usageStyles from './UsagePanel.module.css';

@@ -1,4 +1,4 @@
-import { LessonPackSchema, type LessonPack, type LearningSourceRef } from '@tokai/contracts';
+import { LessonPackSchema, type LessonPack, type LearningSourceRef } from '@milli/contracts';
 import { AUTHORED_LESSON_PACKS } from '../../../content/lessons';
 import { asNumber, check, immutable, parseNumeric, unique } from './common';
 

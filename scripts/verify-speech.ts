@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { createSynthesizer, createTranscriber, SpeechError, synthesizeSpeech } from '../packages/speech/src/index.js';
 
-const text = 'Welcome to Tokai. Let us learn one idea together.';
+const text = 'Welcome to milli. Let us learn one idea together.';
 
 function wave(pcm: Buffer): Buffer {
   const header = Buffer.alloc(44);

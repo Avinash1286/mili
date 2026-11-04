@@ -33,7 +33,7 @@ export function DictationInput({ onTranscript, disabled = false, idleLabel = 'Di
     let binary = ''; for (let start = 0; start < bytes.length; start += 8192) binary += String.fromCharCode(...bytes.subarray(start, start + 8192));
     const controller = new AbortController(); request.current = controller; const deadline = setTimeout(() => controller.abort(), 48000);
     try { const text = await api.dictation(btoa(binary), controller.signal); if (current === epoch.current) { callback.current(text); setMessage('Transcript added. Check it before submitting your answer.'); } }
-    catch (error) { if (current === epoch.current) setMessage(controller.signal.aborted ? 'Transcription took too long. Your typed answer is still here; you can retry.' : errorText(error)); }
+    catch (error) { if (current === epoch.current) setMessage(controller.signal.aborted ? 'AssemblyAI speech recognition timed out and is unreachable right now. Continue with chat.' : errorText(error)); }
     finally { clearTimeout(deadline); if (current === epoch.current) { closing.current = false; setState('idle'); request.current = undefined; } }
   }
   function stop(current = epoch.current) {

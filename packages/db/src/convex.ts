@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { Session } from '@tokai/contracts';
+import type { Session } from '@milli/contracts';
 import { StoreError, type Store, type Principal, type Resources, type Resource, type Outbox, type JobRecord, type MutationGuard, type Mutation, type StoredEvent, type DomainEvent, type Chunks, type VoiceTickets, type VoiceTicket } from './types.js';
 import { assertPrincipal, boundedJson, conflict, duration, identifier, normalizeSession, notFound, revision, tokenHash } from './validation.js';
 import { ServiceTransport, type ConvexConnection, type ConvexTransport } from './transport.js';

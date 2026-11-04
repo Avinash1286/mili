@@ -1,7 +1,7 @@
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve as resolvePath } from 'node:path';
-import type { SourceChunk } from '@tokai/db';
+import type { SourceChunk } from '@milli/db';
 import type { SourceMime } from './content.js';
 export * from './content.js';
 export type ProcessingMetrics = { elapsedMs: number; peakRssBytes: number; cpuMs: number };

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { SPATIAL_CATALOG } from '@tokai/contracts';
+import { SPATIAL_CATALOG } from '@milli/contracts';
 import { disposeObject, validateSpatialGlb } from '../src/lib/spatial/renderer';
 
 function arrayBuffer(bytes: Uint8Array): ArrayBuffer { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer; }

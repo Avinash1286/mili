@@ -7,7 +7,7 @@ The audit uses pinned `@axe-core/playwright` 4.14.0 and the actual production Ne
 Build the current UI before production browser checks. Do not run another browser runner or Next build concurrently. The local Convex services and configuration must be available for the real API server.
 
 ```powershell
-pnpm --filter @tokai/web build
+pnpm --filter @milli/web build
 $env:TOKAI_E2E_PRODUCTION = '1'
 pnpm exec playwright test --config tests/phase6/playwright.config.ts --workers=1
 pnpm exec playwright test --config tests/phase6/regression.config.ts --workers=1

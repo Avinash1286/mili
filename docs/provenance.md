@@ -1,9 +1,9 @@
 # Provenance
 
-- Planning source: `F:\tokai-agora\imp.md`, copied unchanged to this root.
+- Planning source: `F:\tokai-agora\imp.md`, copied to this root and subsequently updated for milli branding.
 - Existing reference project: `F:\tokai-agora`, baseline commit `31f6c24`; read during planning.
 - The new application is authored in `F:\mili`; the historical `agent-samples` tree is not copied or included in its dependency graph.
-- The Tokai concept and forest-green visual direction derive from the pre-existing project. This is not a claim that the product idea originated during the new hackathon.
+- The milli concept and forest-green visual direction derive from the pre-existing project. This is not a claim that the product idea originated during the new hackathon.
 - Dependencies retain their respective licenses. A root application license and rights to inherited branding must be established before a public code release.
 - The new code does not inherit the Agora event's technology requirements or judging rubric.
 - AI coding agents are being used to implement the application. Check the current organizer's disclosure and prior-work rules before submission.
@@ -17,3 +17,5 @@
 - English OCR uses Apache-2.0 [Tesseract tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast), pinned to `87416418657359cb625c412a48b6e1d6d41c29bd`. No cloud OCR service or provider key is used. Exact downloads/sizes/SHA256s are in `content/models/learning-assets.json`; weights are downloaded locally rather than committed.
 - Four original lesson packs cite OpenStax/NASA and other primary educational references in `content/lessons`. They were checked for schema/source consistency and deterministic scoring. No independent human subject-matter review is claimed.
 - PDF exports embed pinned OFL Noto Sans and Noto Sans Math fonts. Their source licenses and hashes are tracked under `content/fonts`. Uncovered characters produce an explicit export error; Markdown/JSON preserve the original text.
+
+- Tutor status animation uses [Thinking Orbs](https://github.com/Jakubantalik/thinking-orbs) by Jakub Antalik, distributed under the MIT license through the `thinking-orbs` package.

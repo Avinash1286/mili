@@ -5,8 +5,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { randomUUID } from 'node:crypto';
-import { FileStore } from '@tokai/db';
-import { createLesson } from '@tokai/tutor-core';
+import { FileStore } from '@milli/db';
+import { createLesson } from '@milli/tutor-core';
 
 it('cancels HTTP tutor work after the request body arrived and rejects a late provider result', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'tokai-disconnect-'));

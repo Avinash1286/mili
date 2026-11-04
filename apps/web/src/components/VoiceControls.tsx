@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Volume2, Square, PhoneOff, SlidersHorizontal, X, Zap } from 'lucide-react';
-import type { Session } from '@tokai/contracts';
+import type { Session } from '@milli/contracts';
 import type { useVoiceSession } from '@/hooks/useVoiceSession';
 import { VoiceOrb, type OrbState } from './VoiceOrb';
 type Voice = ReturnType<typeof useVoiceSession>;

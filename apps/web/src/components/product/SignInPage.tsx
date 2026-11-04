@@ -19,7 +19,7 @@ export function SignInPage() {
     setBusy(true); setError('');
     try {
       const me = mode === 'sign-up' ? await api.nativeSignUp({ name: name.trim(), email: email.trim(), password }) : await api.nativeSignIn({ email: email.trim(), password });
-      setPassword(''); notifyPreferences(me.preferences); router.replace('/dashboard');
+      setPassword(''); notifyPreferences(me.preferences); router.replace('/courses');
     } catch (e) { setError(errorText(e)); setBusy(false); }
   }
   async function providerSignIn() { setBusy(true); setError(''); try { window.location.assign(await api.login()); } catch (e) { setError(errorText(e)); setBusy(false); } }
@@ -39,6 +39,6 @@ export function SignInPage() {
       {capabilities?.oidc && <section className={styles.panel}><h2>Use your connected identity provider.</h2><p className={styles.intro}>Continue through the sign-in provider configured for this installation.</p><button className={styles.secondary} disabled={busy} onClick={() => void providerSignIn()}>Continue with identity provider</button></section>}
       {capabilities && !capabilities.native && !capabilities.oidc && <StatusMessage>Account sign-in is not configured here. Your guest learning remains available in this browser.</StatusMessage>}
     </>}
-    <Link className={styles.link} href="/dashboard">Continue to my learning space</Link>
+    <Link className={styles.link} href="/courses">Continue to my courses</Link>
   </ProductShell>;
 }

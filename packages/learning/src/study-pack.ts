@@ -1,4 +1,4 @@
-import { StudyPackSchema, type AssessmentAttempt, type AssessmentEvaluation, type LearningCard, type LearningConcept, type LearningSourceRef, type LessonPack, type MasteryEvidence, type Session, type StudyPack } from '@tokai/contracts';
+import { StudyPackSchema, type AssessmentAttempt, type AssessmentEvaluation, type LearningCard, type LearningConcept, type LearningSourceRef, type LessonPack, type MasteryEvidence, type Session, type StudyPack } from '@milli/contracts';
 import { check, immutable, timestamp, unique } from './common';
 import { deriveMastery } from './mastery';
 import { mergeSourceRefs, validateCard } from './review';

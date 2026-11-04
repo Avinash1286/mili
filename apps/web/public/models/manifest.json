@@ -7,7 +7,7 @@
       "assetUrl": "/models/solar-system.glb",
       "checksum": "e9ab2d31ff1231afce57b15814862cf297ad48735702080fc746ac591a5e0790",
       "license": "MIT",
-      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "attribution": "Original procedural geometry created for milli (2026). Source code and assets are included; no third-party meshes or textures.",
       "budget": {
         "maxBytes": 2000000,
         "maxTriangles": 50000,
@@ -257,7 +257,7 @@
       "assetUrl": "/models/dna.glb",
       "checksum": "2417c2da66b92059afe8feb1f6e8282e7e5a468e477f87c88baa28fb167db4c6",
       "license": "MIT",
-      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "attribution": "Original procedural geometry created for milli (2026). Source code and assets are included; no third-party meshes or textures.",
       "budget": {
         "maxBytes": 2000000,
         "maxTriangles": 50000,
@@ -494,7 +494,7 @@
       "assetUrl": "/models/chloroplast.glb",
       "checksum": "0b20b98ba7ac36c784ff261f755c34db8b28705c9cb223ca04ce2bd779e7a209",
       "license": "MIT",
-      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "attribution": "Original procedural geometry created for milli (2026). Source code and assets are included; no third-party meshes or textures.",
       "budget": {
         "maxBytes": 2000000,
         "maxTriangles": 50000,
@@ -717,7 +717,7 @@
       "assetUrl": "/models/heart.glb",
       "checksum": "edac399289b965733dac2680cc6799e65927b8bdb94a86da132509fd2f4f65dd",
       "license": "MIT",
-      "attribution": "Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.",
+      "attribution": "Original procedural geometry created for milli (2026). Source code and assets are included; no third-party meshes or textures.",
       "budget": {
         "maxBytes": 2000000,
         "maxTriangles": 50000,

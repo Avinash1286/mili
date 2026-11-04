@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
-import { CreateLessonSchema, LearnerPreferencesSchema, TOPICS, type LearnerPreferences, type Identity, type Capabilities } from '@tokai/contracts';
+import { StartCourseSessionSchema, LearnerPreferencesSchema, TOPICS, type LearnerPreferences, type Identity, type Capabilities } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
+import { unlockLessonAudio } from '@/lib/lesson-audio';
 import { ProductShell, StatusMessage } from './ProductShell';
 import { PreferenceFields } from './PreferenceFields';
 import { SourceManager } from './SourceManager';
@@ -29,10 +30,11 @@ export function NewLesson() {
     setCapabilities(health);
   } }).catch(e => { if (active) setError(errorText(e)); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, []);
   async function submit() {
-    const parsed = CreateLessonSchema.safeParse({ topic, mode, goal, sourceIds: mode === 'live' ? sourceIds : [], grounding: mode === 'live' ? grounding : 'general', preferences: mode === 'sample' ? { ...preferences, language: 'english' } : preferences });
+    unlockLessonAudio();
+    const parsed = StartCourseSessionSchema.safeParse({ topic, mode, goal, sourceIds: mode === 'live' ? sourceIds : [], grounding: mode === 'live' ? grounding : 'general', preferences: mode === 'sample' ? { ...preferences, language: 'english' } : preferences });
     if (!parsed.success) { setError(parsed.error.issues.map(issue => `${issue.path.join('.') || 'Lesson'}: ${issue.message}`).join(' ')); return; }
     if (grounding === 'sources-only' && mode === 'live' && !sourceIds.length) { setError('Choose at least one ready source for a source-only lesson.'); return; }
-    setBusy(true); setError(''); try { const session = await api.createLesson(parsed.data); router.push(`/learn/${session.id}`); } catch (e) { setError(errorText(e)); setBusy(false); }
+    setBusy(true); setError(''); try { const session = await api.startCourse(parsed.data); router.push(`/learn/${session.id}`); } catch (e) { setError(errorText(e)); setBusy(false); }
   }
   return <ProductShell title="New lesson" identity={identity}>
     {error && <StatusMessage error>{error}</StatusMessage>}

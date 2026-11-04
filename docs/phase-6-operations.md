@@ -1,6 +1,6 @@
 # Local backup, restore and job recovery
 
-Tokai uses a persistent native Convex backend locally. FileStore tests are not evidence that Convex data or native files can be restored.
+milli uses a persistent native Convex backend locally. FileStore tests are not evidence that Convex data or native files can be restored.
 
 ## Repeat the isolated verification
 

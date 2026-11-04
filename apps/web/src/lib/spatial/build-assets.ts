@@ -1,7 +1,7 @@
 /** Original, deterministic teaching geometry. This module runs only in the asset generator. */
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import type { SpatialModelId } from '@tokai/contracts';
+import type { SpatialModelId } from '@milli/contracts';
 
 const colors = { green: '#6e9b83', yellow: '#d4ae59', blue: '#76a6b0', red: '#b96d60' };
 function group(root: THREE.Object3D, name: string) { const value = new THREE.Group(); value.name = name; value.userData.partId = name; root.add(value); return value; }
@@ -75,7 +75,7 @@ function heart(scene: THREE.Scene) {
 export function createSpatialAsset(id: SpatialModelId): THREE.Scene {
   const scene = new THREE.Scene(); scene.name = `tokai-${id}`;
   ({ 'solar-system': solar, dna, chloroplast, heart })[id](scene);
-  scene.userData = { ...scene.userData, author: 'Tokai', version: '1.0.0', license: 'MIT', illustrative: true };
+  scene.userData = { ...scene.userData, author: 'milli', version: '1.0.0', license: 'MIT', illustrative: true };
   return scene;
 }
 export async function exportSpatialAsset(id: SpatialModelId): Promise<{ bytes: Uint8Array; meshNames: string[]; triangles: number; meshes: number }> {

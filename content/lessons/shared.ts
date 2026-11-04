@@ -31,4 +31,4 @@ export function cards(packId: string, input: {
     ...input.spoken.map(([id, conceptId, front, back, rubricAssessmentId, sourceRefs]) => ({ id: `${packId}-${id}`, kind: 'spoken-recall' as const, front, back, hint: 'Name the important parts, then explain how they are connected.', explanation: back, conceptIds: [conceptId], rubricAssessmentId: `${packId}-${rubricAssessmentId}`, sourceRefs })),
   ];
 }
-export function finishPack(pack: Omit<LessonPack, 'version' | 'authoredBy' | 'reviewedAt'>): LessonPack { return { ...pack, version: '1.0.0', authoredBy: 'Tokai original educational content', reviewedAt: REVIEWED_AT }; }
+export function finishPack(pack: Omit<LessonPack, 'version' | 'authoredBy' | 'reviewedAt'>): LessonPack { return { ...pack, version: '1.0.0', authoredBy: 'milli original educational content', reviewedAt: REVIEWED_AT }; }

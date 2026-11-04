@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { LearningCard, ReviewRating } from '@tokai/contracts';
+import type { LearningCard, ReviewRating } from '@milli/contracts';
 import { api, errorText, type Me } from '@/lib/api';
 import { EmptyState, ProductShell, StatusMessage } from './ProductShell';
 import { DictationInput } from './DictationInput';

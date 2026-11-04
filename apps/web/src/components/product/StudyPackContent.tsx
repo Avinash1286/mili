@@ -1,4 +1,4 @@
-import type { LearningSourceRef, StudyPack } from '@tokai/contracts';
+import type { LearningSourceRef, StudyPack } from '@milli/contracts';
 import { LearningDiagram } from './LearningDiagram';
 import styles from './Product.module.css';
 

@@ -21,19 +21,37 @@ const PROVIDERS: Record<FastProvider['provider'], { label: string; baseUrl: stri
   groq: { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', key: 'GROQ_API_KEY', modelKey: 'GROQ_MODEL' },
 };
 
-/** Fast OpenAI-compatible tutor providers in configured order; Gemini stays the caller's final fallback. */
+const fallbackOrder = ['groq', 'cerebras'] as const;
+
+/** Configured OpenAI-compatible fallbacks, in priority order. */
 export function fastProvidersFromEnv(env: Record<string, string | undefined>): FastProvider[] {
-  const order = (env.TUTOR_PROVIDER_ORDER ?? 'cerebras,groq').split(',').map(value => value.trim().toLowerCase());
   const timeout = Number(env.TUTOR_FAST_TIMEOUT_MS ?? 12000);
   const timeoutMs = Number.isFinite(timeout) ? Math.max(2000, Math.min(30000, timeout)) : 12000;
   const result: FastProvider[] = [];
-  for (const name of order) {
-    if (name !== 'cerebras' && name !== 'groq') continue;
+  for (const name of fallbackOrder) {
     const spec = PROVIDERS[name], apiKey = env[spec.key]?.trim();
-    if (!apiKey || result.some(item => item.provider === name)) continue;
+    if (!apiKey) continue;
     result.push({ provider: name, apiKey, model: env[spec.modelKey]?.trim() || spec.model, timeoutMs });
   }
   return result;
+}
+
+export type ModelAttempt = { kind: 'gemini' } | { kind: 'fast'; provider: FastProvider };
+
+export function modelAttempts(input: { apiKey: string; model: string; fastProviders?: FastProvider[] }): ModelAttempt[] {
+  const attempts: ModelAttempt[] = [];
+  for (const name of fallbackOrder) {
+    const provider = input.fastProviders?.find(item => item.provider === name && item.apiKey && item.model);
+    if (provider) attempts.push({ kind: 'fast', provider });
+  }
+  if (input.apiKey && input.model) attempts.push({ kind: 'gemini' });
+  return attempts;
+}
+
+/** Give the primary provider half the remaining budget, leaving time for each fallback. */
+export function modelAttemptBudget(attempt: ModelAttempt, remaining: number, attemptsLeft: number): number {
+  const share = attemptsLeft === 1 ? remaining : Math.floor(remaining / 2);
+  return attempt.kind === 'fast' ? Math.min(share, attempt.provider.timeoutMs ?? 12000) : share;
 }
 
 const count = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;

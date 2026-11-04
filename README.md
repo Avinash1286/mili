@@ -1,4 +1,4 @@
-# Tokai
+# milli
 
 A learning workspace with voice tutoring, editable diagrams, concept maps, optional local hand gestures, interactive 3D models and evidence-based practice.
 
@@ -44,7 +44,7 @@ Then start the app:
 pnpm dev
 ```
 
-Open [Tokai](http://localhost:3000). [API readiness](http://localhost:4000/health/ready) reports the actual persistence adapter. `pnpm dev` runs a stable API; restart it after API/environment changes. `pnpm dev:api` enables API file watching.
+Open [milli](http://localhost:3000). [API readiness](http://localhost:4000/health/ready) reports the actual persistence adapter. `pnpm dev` runs a stable API; restart it after API/environment changes. `pnpm dev:api` enables API file watching.
 
 The API reads `.env` then `.env.local`. Browser API URL overrides belong in `apps/web/.env.local`. A checkout without Convex configuration has an explicit file compatibility mode for samples/tests; it does not run durable Convex background work. The full feature set requires the Convex setup.
 

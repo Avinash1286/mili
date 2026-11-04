@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { ConvexStore } from '@tokai/db';
-import { TeachingBeatProposalSchema, type VoiceServerEvent, type Session } from '@tokai/contracts';
+import { ConvexStore } from '@milli/db';
+import { TeachingBeatProposalSchema, type VoiceServerEvent, type Session } from '@milli/contracts';
 import { createApp } from '../src/app.js';
 const pause = (ms = 50) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check: () => boolean) { for (let i = 0; i < 300; i++) { if (check()) return; await pause(); } throw new Error('Timed out waiting for the persisted voice event.'); }

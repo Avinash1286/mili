@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SessionSchema, TOPICS, type Session } from '@tokai/contracts';
+import { SessionSchema, TOPICS, type Session } from '@milli/contracts';
 import { createLesson, sampleReply, sampleTeachingReply, summarizeSession, LESSONS } from '../src/index.js';
 
 function respond(session: Session, text: string, selectedNodeId?: string) {

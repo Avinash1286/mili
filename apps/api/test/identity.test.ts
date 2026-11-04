@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
-import { FileStore, StoreError } from '@tokai/db';
+import { FileStore, StoreError } from '@milli/db';
 import { registerIdentity } from '../src/identity.js';
 import { createApp } from '../src/app.js';
 const cleanups: (() => Promise<unknown>)[] = [];

@@ -1,11 +1,11 @@
 import { GoogleGenAI, FunctionCallingConfigMode, type Content } from '@google/genai';
 import { z } from 'zod';
-import { BoardCommandSchema, DiagramSpecSchema, MapUpdateSchema, LessonFocusSchema, TeachingBeatProposalSchema, TutorLearningActionSchema, SpatialSelectionSchema, SPATIAL_CATALOG, applyBoardTransaction, applyMapUpdate, emptyConceptMap, layoutDiagram, resolveSelection, pruneMapBoardReferences, type TeachingBeatProposal, type SelectionContext } from '@tokai/contracts';
-import { TutorError, type GenerateReply, type TutorDiagnostics, type PreparedLearningAction, type TutorInput, type TutorReply, type FastProvider } from './types.js';
+import { BoardCommandSchema, DiagramSpecSchema, MapUpdateSchema, LessonFocusSchema, TeachingBeatProposalSchema, TutorLearningActionSchema, SpatialSelectionSchema, SPATIAL_CATALOG, applyBoardTransaction, applyMapUpdate, emptyConceptMap, layoutDiagram, resolveSelection, pruneMapBoardReferences, type TeachingBeatProposal, type SelectionContext } from '@milli/contracts';
+import { TutorError, type GenerateReply, type TutorDiagnostics, type PreparedLearningAction, type TutorInput, type TutorReply } from './types.js';
 import { plainTeachingBeat, splitTeachingText, validateTeachingPlan } from './teaching.js';
 import { groundSpatialSelection } from './spatial.js';
 import { observeGeminiUsage } from './usage.js';
-import { OpenAICompatibleDriver, providerLabel, unavailable, type ModelDriver, type ModelTurn, type ToolCall, type ToolResult } from './openai-compatible.js';
+import { OpenAICompatibleDriver, modelAttempts, modelAttemptBudget, providerLabel, unavailable, type ModelAttempt, type ModelDriver, type ModelTurn, type ToolCall, type ToolResult } from './openai-compatible.js';
 
 const PROMPT_VERSION = 'tokai-teaching-4.1';
 const expectedRevision = z.number().int().nonnegative().describe('The exact current board.revision from the provided context or most recent tool result.');
@@ -69,10 +69,9 @@ class GeminiDriver implements ModelDriver {
   nudge(text: string) { this.contents.push({ role: 'user', parts: [{ text }] }); }
 }
 
-type Attempt = { kind: 'fast'; provider: FastProvider } | { kind: 'gemini' };
 export const generateTutorReply: GenerateReply = async input => {
-  const fast = (input.fastProviders ?? []).filter(item => item.apiKey && item.model), gemini = Boolean(input.apiKey && input.model);
-  if (!fast.length && !gemini) throw unavailable();
+  const chain = modelAttempts(input);
+  if (!chain.length) throw unavailable();
   if (input.signal?.aborted) throw new TutorError('TUTOR_CANCELLED', 'The tutoring request was cancelled.');
   const selection = input.selection ?? (input.selectedNodeId ? { shapeIds: [input.selectedNodeId], conceptIds: [], boardRevision: input.session.board.revision ?? 0 } : undefined);
   const selectedSpatial = groundSpatialSelection(selection?.spatial);
@@ -81,13 +80,11 @@ export const generateTutorReply: GenerateReply = async input => {
   const requestedTimeout = input.limits?.requestTimeoutMs ?? 45000;
   const requestTimeoutMs = Number.isFinite(requestedTimeout) ? Math.max(1000, Math.min(45000, requestedTimeout)) : 45000;
   const deadline = Date.now() + requestTimeoutMs, fallbacks: { provider: string; code: string }[] = [];
-  const chain: Attempt[] = [...fast.map(provider => ({ kind: 'fast' as const, provider })), ...(gemini ? [{ kind: 'gemini' as const }] : [])];
   let lastError: unknown;
   for (const [index, attempt] of chain.entries()) {
     const remaining = deadline - Date.now();
     if (remaining < 1000) break;
-    // Leave the slower fallback enough time when a fast provider stalls.
-    const budget = index === chain.length - 1 ? remaining : Math.min(attempt.kind === 'fast' ? attempt.provider.timeoutMs ?? 12000 : remaining, Math.floor(remaining / 2));
+    const budget = modelAttemptBudget(attempt, remaining, chain.length - index);
     try {
       const reply = await attemptReply(input, attempt, budget, selection, selectedSpatial);
       if (reply.diagnostics) { reply.diagnostics.provider = attempt.kind === 'fast' ? attempt.provider.provider : 'gemini'; if (fallbacks.length) reply.diagnostics.fallbacks = fallbacks; }
@@ -101,7 +98,7 @@ export const generateTutorReply: GenerateReply = async input => {
   throw lastError ?? new TutorError('TUTOR_TIMEOUT', 'The tutor took too long. Your lesson is saved; please try again.');
 };
 
-async function attemptReply(input: TutorInput, attempt: Attempt, requestTimeoutMs: number, selection: SelectionContext | undefined, selectedSpatial: ReturnType<typeof groundSpatialSelection>): Promise<TutorReply> {
+async function attemptReply(input: TutorInput, attempt: ModelAttempt, requestTimeoutMs: number, selection: SelectionContext | undefined, selectedSpatial: ReturnType<typeof groundSpatialSelection>): Promise<TutorReply> {
   const grounded = resolveSelection(input.session.board, selectedSpatial && !selection?.shapeIds.length ? undefined : selection);
   const timeout = new AbortController();
   const signal = AbortSignal.any([timeout.signal, ...(input.signal ? [input.signal] : [])]);

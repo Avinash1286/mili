@@ -19,7 +19,7 @@ The package contains optional plugin code; absence above means **not enabled or 
 - POST `sign-up/email`, `sign-in/email`, `sign-out` under `/api/auth/`.
 - GET `get-session`, `convex/token`, `convex/jwks`, and `convex/.well-known/openid-configuration` under `/api/auth/`.
 
-The adapter's root OpenID discovery redirect remains available. All other auth HTTP paths, including dynamic OAuth callbacks, return 404 without issuing a cookie. The configuration assertion fails if a plugin other than the single Convex plugin is added, social providers are enabled, or account linking is enabled. This guard must not be expanded until the dependency review is repeated. It also intentionally blocks unused Better Auth default account-management endpoints; Tokai's existing owner-authorized account deletion uses the server-side component adapter.
+The adapter's root OpenID discovery redirect remains available. All other auth HTTP paths, including dynamic OAuth callbacks, return 404 without issuing a cookie. The configuration assertion fails if a plugin other than the single Convex plugin is added, social providers are enabled, or account linking is enabled. This guard must not be expanded until the dependency review is repeated. It also intentionally blocks unused Better Auth default account-management endpoints; milli's existing owner-authorized account deletion uses the server-side component adapter.
 
 ## Why an upstream backport was not selected
 

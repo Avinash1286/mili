@@ -8,7 +8,7 @@ Keep Node.js 24, pnpm, Next.js and the persistent Fastify API. Fastify owns Gemi
 
 Prefer the official CLI's native Windows anonymous deployment when available. It requires no cloud account, stores state in the checkout's ignored `.convex/` directory, and runs while `convex dev` runs. It is a documented beta development deployment, not production hosting. A persistent self-hosted Docker backend/dashboard is the alternative; its default local database and native files need no additional PostgreSQL, Redis or S3 service. [Local deployments](https://docs.convex.dev/cli/local-deployments), [anonymous agent setup](https://docs.convex.dev/cli/agent-mode), [self-hosted backend](https://github.com/convex/convex-backend/blob/main/self-hosted/README.md).
 
-Local Keycloak supplies OIDC accounts, with an isolated realm/client and persisted state. Do not implement password storage in Tokai. Docker Desktop currently has an independently diagnosed stale Windows socket problem. Its zero-byte Secrets Engine socket directory was preserved and the app restarted; startup then reached the analogous Docker/run/dockerInference socket. No volumes/settings were reset, and no PostgreSQL/Redis/S3 containers were created.
+Local Keycloak supplies OIDC accounts, with an isolated realm/client and persisted state. Do not implement password storage in milli. Docker Desktop currently has an independently diagnosed stale Windows socket problem. Its zero-byte Secrets Engine socket directory was preserved and the app restarted; startup then reached the analogous Docker/run/dockerInference socket. No volumes/settings were reset, and no PostgreSQL/Redis/S3 containers were created.
 
 ## Authentication
 

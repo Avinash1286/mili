@@ -1,4 +1,4 @@
-import { TeachingBeatProposalSchema, applyBoardTransaction, applyMapUpdate, emptyConceptMap, pruneMapBoardReferences, type TeachingBeatProposal, type Session } from '@tokai/contracts';
+import { TeachingBeatProposalSchema, applyBoardTransaction, applyMapUpdate, emptyConceptMap, pruneMapBoardReferences, type TeachingBeatProposal, type Session } from '@milli/contracts';
 import { TutorError, type TutorReply } from './types.js';
 import { groundSpatialSelection } from './spatial.js';
 

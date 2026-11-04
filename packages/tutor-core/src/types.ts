@@ -1,4 +1,4 @@
-import type { Board, Session, SelectionContext, TeachingBeatProposal, PublicAssessment, TutorLearningAction, PracticeResponse } from '@tokai/contracts';
+import type { Board, Session, SelectionContext, TeachingBeatProposal, PublicAssessment, TutorLearningAction, PracticeResponse } from '@milli/contracts';
 export class TutorError extends Error {
   diagnostics?: TutorDiagnostics;
   providerStatus?: number;
@@ -24,7 +24,7 @@ export type ProviderUsage = {
 };
 /** Called once per HTTP model request; counts are incremental, never turn-cumulative. */
 export type ProviderUsageObserver = (usage: Readonly<ProviderUsage>) => void;
-/** An OpenAI-compatible low-latency provider tried before the Gemini fallback. */
+/** An OpenAI-compatible tutor fallback. */
 export type FastProvider = { provider: 'groq' | 'cerebras'; apiKey: string; model: string; baseUrl?: string; timeoutMs?: number };
 export type TutorInput = { session: Session; text: string; selectedNodeId?: string; selection?: SelectionContext; apiKey: string; model: string; fastProviders?: FastProvider[]; signal?: AbortSignal; onUsage?: ProviderUsageObserver; learning?: TutorLearningContext; practiceResponse?: PracticeResponse; turnId?: string; inputMode?: 'typed' | 'spoken'; limits?: { maxModelCalls?: number; maxRepairAttempts?: number; requestTimeoutMs?: number } };
 export type GenerateReply = (input: TutorInput) => Promise<TutorReply>;

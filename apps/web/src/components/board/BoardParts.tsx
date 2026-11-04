@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Check } from 'lucide-react';
-import type { Board, BoardNode, DiagramSpec } from '@tokai/contracts';
+import type { Board, BoardNode, DiagramSpec } from '@milli/contracts';
 import { nodeBounds, wrapText } from '@/lib/board-geometry';
 
 export function NodeArtwork({ node }: { node: BoardNode }) {

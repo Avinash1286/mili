@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { generateContent } = vi.hoisted(() => ({ generateContent: vi.fn() }));
 vi.mock('@google/genai', () => ({ GoogleGenAI: class { models = { generateContent }; }, FunctionCallingConfigMode: { VALIDATED: 'VALIDATED' } }));
-import { LearnerPreferencesSchema, SessionSettingsSchema, type ExplanationRubric, type LearningSourceRef, type PublicAssessment } from '@tokai/contracts';
+import { LearnerPreferencesSchema, SessionSettingsSchema, type ExplanationRubric, type LearningSourceRef, type PublicAssessment } from '@milli/contracts';
 import { createLesson } from '../src/lessons';
 import { createGeminiRubricGrader, generateAssessment, generateLearningCards, generateLessonPlan } from '../src/learning';
 

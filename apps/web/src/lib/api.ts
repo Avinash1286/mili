@@ -1,6 +1,9 @@
 import { GuestResponseSchema, SessionSchema, CapabilitiesSchema, VoiceTicketSchema, IdentitySchema, LearnerPreferencesSchema, SourceSchema, UploadIntentSchema, ArtifactSchema, ShareLinkSchema, PublicAssessmentSchema, AssessmentPresentationSchema, AssessmentAttemptSchema, AssessmentEvaluationSchema, MasteryEstimateSchema, LearningCardSchema, ReviewReceiptSchema, StudyPackSchema, CreateLessonSchema,
+  CourseScriptSchema, CourseProgressSchema, CourseHelpReplySchema, StartCourseSessionSchema, CourseTurnReplySchema,
   type Session, type Topic, type Board, type BoardTransaction, type MapUpdate, type SelectionContext, type Identity, type LearnerPreferences, type CreateLesson, type Source, type PublicAssessment, type AssessmentAttempt, type AssessmentEvaluation, type MasteryEstimate, type LearningCard, type StudyPack, type Artifact, type SubmitAssessment, type ReviewSubmission, type UsageSummary, type PracticeResponse,
-} from '@tokai/contracts';
+  type CourseScript, type CourseProgress, type CourseHelpRequest, type CourseHelpReply,
+  type StartCourseSession, type CourseTurnRequest, type CourseTurnReply, type CourseSpeechRequest,
+} from '@milli/contracts';
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 const KEY = 'tokai.guest.v1';
 let pendingGuest: Promise<string> | undefined;
@@ -167,6 +170,39 @@ export const api = {
   async remove(id: string) { await request(`/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   speech: (id: string, messageId: string) => binary(`${sessionPath(id)}/speech`, json({ messageId })),
   voicePreview: (voiceId: string) => binary(`/v1/voices/${encodeURIComponent(voiceId)}/preview`, json({})),
+  async startCourse(input: StartCourseSession): Promise<Session> {
+    const data = await request('/v1/courses/start', json(StartCourseSessionSchema.parse(input)));
+    return SessionSchema.parse(data.session);
+  },
+  async course(id: string): Promise<{ script: CourseScript; progress: CourseProgress; revision: number }> {
+    const data = await request(`${sessionPath(id)}/course`);
+    return { script: CourseScriptSchema.parse(data.script), progress: CourseProgressSchema.parse(data.progress), revision: Number(data.revision ?? 0) };
+  },
+  async prepareCourseChapter(id: string, chapterIndex?: number, signal?: AbortSignal): Promise<{ script: CourseScript; preparedChapter: number }> {
+    const data = await request(`${sessionPath(id)}/course-prepare`, { ...json(chapterIndex !== undefined ? { chapterIndex } : {}), ...(signal ? { signal } : {}) });
+    return { script: CourseScriptSchema.parse(data.script), preparedChapter: Number(data.preparedChapter ?? -1) };
+  },
+  async courseTurn(id: string, input: CourseTurnRequest, signal?: AbortSignal): Promise<{ reply: CourseTurnReply; script: CourseScript }> {
+    const data = await request(`${sessionPath(id)}/course-turn`, { ...json(input), ...(signal ? { signal } : {}) });
+    return { reply: CourseTurnReplySchema.parse(data.reply), script: CourseScriptSchema.parse(data.script) };
+  },
+  async saveCourseProgress(id: string, progress: CourseProgress, revision: number): Promise<{ progress: CourseProgress; revision: number }> {
+    const data = await request(`${sessionPath(id)}/course-progress`, json({ progress: CourseProgressSchema.parse(progress), revision }, 'PUT'));
+    return { progress: CourseProgressSchema.parse(data.progress), revision: Number(data.revision ?? 0) };
+  },
+  async courseHelp(id: string, input: CourseHelpRequest): Promise<CourseHelpReply> {
+    const data = await request(`${sessionPath(id)}/course-help`, json(input));
+    return CourseHelpReplySchema.parse(data.reply);
+  },
+  courseSpeech: (
+    id: string,
+    stepIdOrInput: string | CourseSpeechRequest,
+    part: 'concept' | 'question' | 'step' | 'body' | 'explanation' = 'step',
+    signal?: AbortSignal,
+  ) => binary(
+    `${sessionPath(id)}/course-speech`,
+    { ...json(typeof stepIdOrInput === 'string' ? { stepId: stepIdOrInput, part } : stepIdOrInput), ...(signal ? { signal } : {}) },
+  ),
 };
 export function voiceSocketUrl(ticket: string) { const url = new URL(`${API}/v1/voice`, typeof window === 'undefined' ? undefined : window.location?.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.searchParams.set('ticket', ticket); return url.toString(); }
 export function errorText(error: unknown) { return error instanceof TypeError ? 'We couldn’t reach your learning workspace. Check that the server is running, then try again.' : error instanceof Error ? error.message : 'Something went wrong. Please try again.'; }
@@ -174,4 +210,13 @@ export function downloadBlob(blob: Blob, filename: string) { const url = URL.cre
 export function downloadSummary(session: Session) {
   const text = `# ${session.title}\n\n${session.mode === 'sample' ? '> Guided sample lesson. Responses are prepared examples, not live AI.\n\n' : ''}${session.summary || '## Conversation\n\n' + session.messages.map(m => `**${m.role === 'tutor' ? 'Tutor' : 'You'}:** ${m.text}`).join('\n\n')}\n\n## Review cards\n\n${session.flashcards.map(c => `### ${c.front}\n\n${c.back}`).join('\n\n')}`;
   const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `milli-${session.topic}-notes.md`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Authentication is sent in the first frame, never in a WebSocket URL. */
+export async function dictationConnection() {
+  const headers = await accessHeaders();
+  const token = headers.Authorization?.replace(/^Bearer /, '');
+  const url = new URL(`${API}/v1/dictation-stream`);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return { url: url.toString(), token };
 }

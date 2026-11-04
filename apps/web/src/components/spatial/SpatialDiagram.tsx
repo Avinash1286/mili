@@ -1,6 +1,6 @@
 'use client';
 import { useId } from 'react';
-import type { SpatialModel } from '@tokai/contracts';
+import type { SpatialModel } from '@milli/contracts';
 import styles from './SpatialViewer.module.css';
 
 function diagramInk(background: string) {

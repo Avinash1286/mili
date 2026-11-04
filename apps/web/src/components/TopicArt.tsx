@@ -1,4 +1,4 @@
-import type { Topic } from '@tokai/contracts';
+import type { Topic } from '@milli/contracts';
 export function TopicArt({ topic }: { topic: Topic }) {
   return <svg className={`topic-art art-${topic}`} viewBox="0 0 300 160" fill="none" aria-hidden="true">
     {topic === 'photosynthesis' && <><circle cx="232" cy="38" r="21" fill="#EDC766"/><path d="M145 146V57" stroke="#245843" strokeWidth="4" strokeLinecap="round"/><path d="M143 113C84 110 84 68 83 60c49-3 67 28 60 53Z" fill="#80A88A"/><path d="M148 90c-2-50 38-61 65-62 3 37-28 59-65 62Z" fill="#39795D"/><path d="m96 73 49 39m3-23 50-46" stroke="#E6EEE2" strokeWidth="2"/><path d="M99 147h93" stroke="#245843" strokeWidth="3" strokeLinecap="round"/><path d="M212 76 183 99" stroke="#BD9640" strokeWidth="2" strokeDasharray="4 6"/><circle cx="73" cy="120" r="5" fill="#BDD3B5"/><path d="M58 37h12m-6-6v12" stroke="#83A68B" strokeWidth="2"/></>}

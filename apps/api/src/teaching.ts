@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { applyMapUpdate, emptyConceptMap, pruneMapBoardReferences, type TeachingBeat, type Session } from '@tokai/contracts';
-import { normalizeTeachingReply, validateTeachingPlan, projectTeachingProposal, type TutorReply } from '@tokai/tutor-core';
+import { applyMapUpdate, emptyConceptMap, pruneMapBoardReferences, type TeachingBeat, type Session } from '@milli/contracts';
+import { normalizeTeachingReply, validateTeachingPlan, projectTeachingProposal, type TutorReply } from '@milli/tutor-core';
 import { applySessionBoardTransaction, sceneFailure } from './board-operations.js';
 import { ApiError } from './store.js';
 

@@ -1,4 +1,4 @@
-import { layoutDiagram, SPATIAL_CATALOG, type Topic, type DiagramSpec, type Session, type SelectionContext, type SpatialSelection } from '@tokai/contracts';
+import { layoutDiagram, SPATIAL_CATALOG, type Topic, type DiagramSpec, type Session, type SelectionContext, type SpatialSelection } from '@milli/contracts';
 import { LESSONS, sampleReply } from './lessons.js';
 import { plainTeachingBeat, splitTeachingText, validateTeachingPlan } from './teaching.js';
 import type { TutorReply } from './types.js';

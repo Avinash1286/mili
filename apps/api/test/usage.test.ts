@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, afterEach, expect, it } from 'vitest';
-import { FileStore, type Principal } from '@tokai/db';
+import { FileStore, type Principal } from '@milli/db';
 import { UsageMeter } from '../src/usage.js';
 
 let directory: string, store: FileStore, p: Principal, q: Principal, other: Principal, time: number;

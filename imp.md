@@ -1,9 +1,9 @@
-# Tokai — complete implementation plan
+# milli — complete implementation plan
 
 **Prepared:** 3 November 2026, Asia/Kathmandu.  
 **Repository reviewed:** `F:\tokai-agora`, HEAD `31f6c24`.  
 **Target event:** [AssemblyAI — Voice hackathon week: Hack into speech](https://luma.com/msrwwjby).  
-**Scope:** Build the complete Tokai learning application from a clean product architecture, using the existing prototype as a reference and preserving its provenance. This is an implementation specification, not a claim that the features already work.
+**Scope:** Build the complete milli learning application from a clean product architecture, using the existing prototype as a reference and preserving its provenance. This is an implementation specification, not a claim that the features already work.
 
 ## Current implementation decisions (user instructions, 3 November 2026)
 
@@ -16,7 +16,7 @@ The user has updated the infrastructure choices while retaining the complete pro
 
 ## 1. Product direction and hackathon fit
 
-Build **Tokai: a voice-first AI tutor that speaks, draws, listens, and checks understanding together**.
+Build **milli: a voice-first AI tutor that speaks, draws, listens, and checks understanding together**.
 
 The student should experience a patient private tutor: ask a question aloud, watch a diagram develop as the tutor explains it, interrupt naturally, point at the confusing part, answer a follow-up question, and leave with a reusable study pack. Speech must drive the learning experience rather than narrate a conventional chatbot response.
 
@@ -85,16 +85,16 @@ This plan is based on source inspection, manifests, repository history, document
 | `Agora-Voice-AI-Quickstart.md`, `Thought_Starters.md` | Agora starter/reference material | Retain with clear provenance |
 | `.agents/skills/agora/` | Agora-specific implementation references | Use only for an actual Agora adapter |
 | `agent-samples/AGENT.md`, `CLAUDE.md` | Sample-specific integration guidance, including environment profiles | Read before modifying retained sample code |
-| `agent-samples/react-voice-client/` | Actual partial Tokai application; Next.js 16.1.6, React 19.2.1, tldraw 4.5.8 range, Tailwind 4 | Source for product styling and interaction references |
-| `components/VoiceClient.tsx` | Tokai shell, connection form, voice controls, transcript, whiteboard, camera component, canvas sharing | Split into focused new product modules |
+| `agent-samples/react-voice-client/` | Actual partial milli application; Next.js 16.1.6, React 19.2.1, tldraw 4.5.8 range, Tailwind 4 | Source for product styling and interaction references |
+| `components/VoiceClient.tsx` | milli shell, connection form, voice controls, transcript, whiteboard, camera component, canvas sharing | Split into focused new product modules |
 | `hooks/useAgoraVoiceClient.ts` | RTC microphone/audio, RTM login, transcript and agent messaging, cleanup/state | Reference lifecycle patterns; replace primary transport |
 | `components/Whiteboard.tsx`, `hooks/useWhiteboard.ts` | tldraw mount and basic shape helpers | Rebuild behind a typed board adapter and verified tldraw API |
 | `hooks/useDiagramGenerator.ts`, `lib/gemini.ts` | Keyword-triggered Gemini bitmap generation inserted into canvas | Replace main teaching path with semantic editable diagrams; keep illustration generation server-side |
 | `hooks/useCanvasAnalysis.ts` | Screenshot capture and Gemini vision description | Replace browser provider call with authorized server grounding |
 | `hooks/useHandGestures.ts`, `components/GestureCamera.tsx` | Browser MediaPipe recognition, drawing/pan callbacks, camera UI | Retain conceptual approach; rebuild calibration, state, and accessibility |
 | `agent-samples/simple-backend/` | Python Flask/Lambda Agora token/config/agent lifecycle backend | Reference only for optional Agora transport |
-| `agent-samples/simple-backend/tests/` | pytest tests for sample config, tokens, agent, endpoints, utilities | Retain historical tests; they do not validate Tokai tutoring |
-| Other voice/avatar clients, recipes, Shen/Thymia assets | Starter demonstrations outside Tokai's learning workflow | Keep outside new application dependencies |
+| `agent-samples/simple-backend/tests/` | pytest tests for sample config, tokens, agent, endpoints, utilities | Retain historical tests; they do not validate milli tutoring |
+| Other voice/avatar clients, recipes, Shen/Thymia assets | Starter demonstrations outside milli's learning workflow | Keep outside new application dependencies |
 | `images/` | Existing visual evidence and design reference | Do not present as screenshots of the new build |
 
 ### 2.2 README feature gap matrix
@@ -131,7 +131,7 @@ The actual legacy web development port is **8083**, with the backend under `agen
 
 ### 2.4 Preserve provenance and originality
 
-Keep `agent-samples/` as reference during the new implementation. Create `docs/provenance.md` listing upstream sample code, existing Tokai modifications, new work, assets, licenses, and the starting commit. Preserve the Agora sample's MIT attribution when reusing it. Check rights to Tokai-specific code/assets separately; an upstream license is not proof that every addition has identical licensing.
+Keep `agent-samples/` as reference during the new implementation. Create `docs/provenance.md` listing upstream sample code, existing milli modifications, new work, assets, licenses, and the starting commit. Preserve the Agora sample's MIT attribution when reusing it. Check rights to milli-specific code/assets separately; an upstream license is not proof that every addition has identical licensing.
 
 Do not describe an extended prototype as wholly created during this hackathon. If rules require newly written application code, implement the new `apps/` and `packages/` modules afresh and disclose the earlier concept/reference. Do not delete history to imply originality. Confirm whether the idea itself or prior submission affects eligibility.
 
@@ -139,7 +139,7 @@ Do not describe an extended prototype as wholly created during this hackathon. I
 
 ### 3.1 New student
 
-1. Open the landing page, understand what Tokai does, and choose a sample lesson or their own topic.
+1. Open the landing page, understand what milli does, and choose a sample lesson or their own topic.
 2. Continue as a scoped guest or sign in. Explain what persists for each mode.
 3. Choose level, learning goal, available lesson length, language, voice, and accessibility preferences.
 4. Run an explicit microphone/output check. Camera is optional and requested only when enabling gestures.
@@ -176,7 +176,7 @@ Dashboard shows recent lessons, unfinished sessions, due review cards, and conce
 | `/share/[shareToken]` | Explicitly shared read-only study pack; revocable and privacy-filtered |
 | `/ops` | Role-protected provider health, failures, usage, version information; no student UI exposure |
 
-Use the existing forest-green/cream Tokai identity, readable typography, and restrained motion. Desktop has a resizable board and study panel, with persistent voice controls. Mobile switches between Board, Transcript, Map, and Review without unmounting the active session. Make camera preview collapsible. Developer configuration belongs in environment settings or protected diagnostics.
+Use the existing forest-green/cream milli identity, readable typography, and restrained motion. Desktop has a resizable board and study panel, with persistent voice controls. Mobile switches between Board, Transcript, Map, and Review without unmounting the active session. Make camera preview collapsible. Developer configuration belongs in environment settings or protected diagnostics.
 
 ## 4. Architecture and technical decisions
 
@@ -256,7 +256,7 @@ tokai-agora/
     board/           # semantic scene, commands, renderer adapters and snapshots
     learning/        # assessment, evidence, mastery and review scheduler
     db/              # schema, migrations, tenant-scoped repositories
-    ui/              # Tokai design system
+    ui/              # milli design system
     fixtures/        # synthetic lessons, audio/protocol fixtures, example scenes
   content/
     lessons/{photosynthesis,fractions,solar-system,circuits}/
@@ -638,7 +638,7 @@ Accessibility is a product feature, not a claim that gestures are accessible to 
 - Encrypt traffic, use private buckets, rotate credentials, audit sensitive administrative actions.
 - Disclose the AI tutor and its limitations; provide correction/report controls. For minor/student deployment, resolve applicable consent and school requirements before claiming compliance.
 
-Do not collect medical/psychological biometrics from the sample's wellness modules. Tokai's adaptation needs learning answers and user preferences, not such data.
+Do not collect medical/psychological biometrics from the sample's wellness modules. milli's adaptation needs learning answers and user preferences, not such data.
 
 ## 17. Reliability, cost and operations
 
@@ -682,7 +682,7 @@ Every package below is part of the complete plan. “Depends on” identifies in
 | A04 | Contracts | A03 | Versioned events, tool schemas, scene model and API schemas with valid/invalid fixtures; web/API share types without circular dependencies |
 | A05 | Platform | A03,A04 | Database migrations, private storage, Redis, OIDC and guest identity; two users cannot access each other's seeded records |
 | A06 | Speech | A03,A04 | AssemblyAI STT/TTS integration probe with cancellation/format/timing fixtures; evidence captured using real API when credentials exist |
-| A07 | Frontend | A03,A04 | Tokai design system, responsive shell, screen routes, loading/error/empty states and keyboard navigation |
+| A07 | Frontend | A03,A04 | milli design system, responsive shell, screen routes, loading/error/empty states and keyboard navigation |
 
 ### Wave B — one complete voice teaching loop
 
@@ -949,7 +949,7 @@ This is a planning tool, **not the event's judging rubric**:
 
 ## 24. Definition of the complete app
 
-Tokai is complete for this plan when all the following are true:
+milli is complete for this plan when all the following are true:
 
 - [ ] A new learner can start a real lesson without technical configuration.
 - [ ] AssemblyAI STT and TTS power the primary live voice path, with real cancellation and recovery.
@@ -987,4 +987,4 @@ Sources were checked on 3 November 2026. Recheck API details at implementation t
 - [tldraw licensing](https://tldraw.dev/community/license) — production deployment prerequisite.
 - [Next.js installation](https://nextjs.org/docs/app/getting-started/installation) — current runtime and framework setup.
 
-The architecture, acceptance targets, work packages, teaching policy and demo strategy are recommendations developed for Tokai. They are not sponsor promises or official hackathon rules.
+The architecture, acceptance targets, work packages, teaching policy and demo strategy are recommendations developed for milli. They are not sponsor promises or official hackathon rules.

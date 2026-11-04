@@ -5,7 +5,7 @@ import {
   type AssessmentAnswer, type AssessmentAttempt, type AssessmentDefinition, type AssessmentEvaluation,
   type AssessmentPresentation, type AssistanceEvent, type ExplanationRubric, type LearningSourceRef,
   type MasteryEvidence, type PublicAssessment, type SubmitAssessment,
-} from '@tokai/contracts';
+} from '@milli/contracts';
 import { absoluteDifference, check, compareRational, configurationNumber, equalRational, immutable, multiply, normalizeText, parseNumeric, printRational, timestamp, unique } from './common';
 
 export type GradingDecision = Pick<AssessmentEvaluation, 'correctness' | 'reasoning' | 'confidence' | 'method' | 'criteria' | 'feedback' | 'misconceptionIds' | 'normalizedAnswer'>;

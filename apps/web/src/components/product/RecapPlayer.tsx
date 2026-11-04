@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Artifact } from '@tokai/contracts';
+import type { Artifact } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
 import { StatusMessage } from './ProductShell';
 import styles from './Product.module.css';

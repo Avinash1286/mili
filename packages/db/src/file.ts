@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Session } from '@tokai/contracts';
+import type { Session } from '@milli/contracts';
 import { StoreError, type Store, type Principal, type Resources, type Resource, type Outbox, type JobRecord, type MutationGuard, type Mutation, type StoredEvent, type DomainEvent, type Chunks, type SourceChunk, type VoiceTickets } from './types.js';
 import { assertPrincipal, boundedJson, conflict, duration, identifier, normalizeSession, notFound, revision, safeCode, tokenHash } from './validation.js';
 type Owner = { id: string; kind: 'guest' | 'user'; expiresAt?: string; deletedAt?: string; issuer?: string; subject?: string };

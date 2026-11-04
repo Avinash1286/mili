@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { StudyPack } from '@tokai/contracts';
+import type { StudyPack } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
 import { ProductShell, StatusMessage } from './ProductShell';
 import { StudyPackContent } from './StudyPackContent';

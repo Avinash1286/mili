@@ -2,7 +2,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { MousePointer2, Pencil, Hand, Eraser, Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Plus, Download, Trash2, X, Link2, Shapes, Image as ImageIcon, MessageCircle, ChevronDown } from 'lucide-react';
-import { layoutDiagram, type Board, type BoardAdapter, type BoardCommand, type BoardNode, type SelectionContext } from '@tokai/contracts';
+import { layoutDiagram, type Board, type BoardAdapter, type BoardCommand, type BoardNode, type SelectionContext } from '@milli/contracts';
 import { boardBounds, boardFocusTarget, boardPng, clamp, connectorAnchors, downloadBlob, exportBoardSvg, fitViewport, nodeBounds, zoomViewport, type BoardFocusRequest, type Viewport } from '@/lib/board-geometry';
 import { boardDiff, localBoardChange } from '@/lib/board-state';
 import { ConnectorEditor, NodeArtwork, ShapeEditor, TemplateEditor } from './BoardParts';

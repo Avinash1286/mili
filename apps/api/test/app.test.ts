@@ -4,7 +4,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
-import type { Session } from '@tokai/contracts';
+import type { Session } from '@milli/contracts';
 
 describe('guest lesson API', () => {
   let app: FastifyInstance;

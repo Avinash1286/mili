@@ -100,7 +100,7 @@ const app = await createApp({
 });
 await app.listen({ host: '127.0.0.1', port: 4100 });
 const stopWorker = fixtureWorker(app, store, jobSecret);
-console.log('Tokai E2E fixture API ready: simulated providers only, port 4100.');
+console.log('milli E2E fixture API ready: simulated providers only, port 4100.');
 async function shutdown() {
   await stopWorker();
   await app.close();

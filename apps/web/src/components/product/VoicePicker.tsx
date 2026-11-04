@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
-import { TUTOR_VOICES, type LearnerPreferences } from '@tokai/contracts';
+import { TUTOR_VOICES, type LearnerPreferences } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
 import styles from './Product.module.css';
 

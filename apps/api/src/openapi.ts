@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import * as contracts from '@tokai/contracts';
+import * as contracts from '@milli/contracts';
 
 export type DocumentedRoute = { method: string | string[]; url: string; bodyLimit?: number };
 type Definition = { summary: string; body?: string; response?: string; status?: number; public?: boolean; description?: string };
@@ -35,10 +35,18 @@ add('POST', '/v1/sessions/:id/resume', 'Resume an owned lesson', { response: 'se
 add('PATCH', '/v1/sessions/:id/notes', 'Save notes at the expected revision', { body: 'NoteUpdateSchema', response: 'session' });
 add('PATCH', '/v1/sessions/:id/privacy', 'Change retention and revoke withdrawn material', { body: 'PrivacyUpdateSchema', response: 'session' });
 add('GET', '/v1/sessions/:id/events', 'Read durable lesson events after a cursor');
+add('POST', '/v1/courses/start', 'Start an interactive adaptive course session immediately', { body: 'StartCourseSessionSchema', response: 'session', status: 201 });
+add('GET', '/v1/sessions/:id/course', 'Read or generate the step-by-step interactive course script and progress');
+add('POST', '/v1/sessions/:id/course-prepare', 'Prepare the next pending syllabus chapter in the background', { body: 'PrepareChapterRequestSchema' });
+add('POST', '/v1/sessions/:id/course-turn', 'Execute an adaptive agentic teaching turn for the active step', { body: 'CourseTurnRequestSchema' });
+add('PUT', '/v1/sessions/:id/course-progress', 'Save interactive step progress at the expected revision', { body: 'SaveCourseProgressSchema' });
+add('POST', '/v1/sessions/:id/course-help', 'Request a milli Socratic hint or explanation for the active step', { body: 'CourseHelpRequestSchema' });
+add('POST', '/v1/sessions/:id/course-speech', 'Synthesize speech for a course step or live tutor turn', { body: 'CourseSpeechRequestSchema', response: 'audio' });
 add('POST', '/v1/sessions/:id/speech', 'Synthesize a saved tutor message', { body: 'SpeechRequestSchema', response: 'audio' });
 add('POST', '/v1/voices/:voiceId/preview', 'Speak a short sample in a curated tutor voice', { response: 'audio' });
 add('POST', '/v1/sessions/:id/voice-ticket', 'Issue a short-lived, one-use voice ticket', { response: 'VoiceTicketSchema' });
 add('GET', '/v1/voice', 'Upgrade a one-use ticket to a voice WebSocket', { public: true, status: 101, description: 'Requires a matching Origin and WebSocket Upgrade. JSON messages follow VoiceClientEventSchema and VoiceServerEventSchema; binary PCM framing is specified in docs/provider-protocol.md. Tickets are one-use and expire; rotation requires a new ticket and authoritative snapshot.' });
+add('GET', '/v1/dictation-stream', 'Stream one owned lesson utterance', { public: true, status: 101, description: 'Requires matching Origin and a start frame with sessionId and bearer token, validated before speech-provider work. JSON follows DictationStreamClientSchema and DictationStreamServerSchema. Send mono PCM16 at 16 kHz after ready, then finish. Audio limit 30 seconds, authentication deadline five seconds, connection limit 45 seconds.' });
 add('POST', '/v1/dictation', 'Transcribe up to thirty seconds of mono PCM16', { body: 'DictationRequestSchema' });
 add('GET', '/v1/sessions/:id/learning', 'Read public questions, practice evidence, cards and artifacts');
 add('POST', '/v1/sessions/:id/assessments', 'Create a presentation of a stored assessment', { body: 'AssessmentRequestSchema' });
@@ -68,7 +76,7 @@ add('POST', '/v1/share-links', 'Create an explicit, expiring study-pack share', 
 add('GET', '/v1/share-links', 'List owned share links, optionally for a lesson');
 add('DELETE', '/v1/share-links/:id', 'Revoke an owned share link', { status: 204 });
 add('GET', '/v1/shares/:token', 'Read the limited projection of an active share', { public: true });
-add('POST', '/internal/jobs/execute', 'Execute a fenced Convex job callback', { public: true, body: 'JobExecutionSchema', description: 'Internal service operation. Requires X-Tokai-Job-Secret and a currently leased worker/fence. Browser learner credentials cannot authorize this operation.' });
+add('POST', '/internal/jobs/execute', 'Execute a fenced Convex job callback', { public: true, body: 'JobExecutionSchema', description: 'Internal service operation. Requires X-milli-Job-Secret and a currently leased worker/fence. Browser learner credentials cannot authorize this operation.' });
 
 export function generateOpenApi(routes: DocumentedRoute[]) {
   const schemas: Record<string, unknown> = {};
@@ -105,5 +113,5 @@ export function generateOpenApi(routes: DocumentedRoute[]) {
     (paths[path] ??= {})[method.toLowerCase()] = operation;
   }
   for (const key of Object.keys(definitions)) if (!seen.has(key)) throw new Error(`Documented HTTP operation is not registered: ${key}`);
-  return { openapi: '3.1.0', info: { title: 'Tokai API', version: '1.0.0', description: 'Generated from the actual Fastify route inventory and shared Zod contracts. Domain refinements, ownership and revision/fence checks also run on the server. Native password signup/signin are provided separately by the restricted Better Auth Next.js proxy at /api/auth; see docs/phase-6-deployment.md. No generated examples contain learner data or credentials.' }, servers: [{ url: '/', description: 'Same-origin hosted API; local development uses http://localhost:4000.' }], paths, components: { securitySchemes: { guestBearer: { type: 'http', scheme: 'bearer', description: 'Expiring learner credential from /v1/guest-sessions.' }, accountCookie: { type: 'apiKey', in: 'cookie', name: 'tokai_session', description: 'HttpOnly application account session. Mutations require the matching Origin.' }, jobSecret: { type: 'apiKey', in: 'header', name: 'X-Tokai-Job-Secret', description: 'Internal callback credential; never available to browsers.' } }, schemas: Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => a.localeCompare(b))) } };
+  return { openapi: '3.1.0', info: { title: 'milli API', version: '1.0.0', description: 'Generated from the actual Fastify route inventory and shared Zod contracts. Domain refinements, ownership and revision/fence checks also run on the server. Native password signup/signin are provided separately by the restricted Better Auth Next.js proxy at /api/auth; see docs/phase-6-deployment.md. No generated examples contain learner data or credentials.' }, servers: [{ url: '/', description: 'Same-origin hosted API; local development uses http://localhost:4000.' }], paths, components: { securitySchemes: { guestBearer: { type: 'http', scheme: 'bearer', description: 'Expiring learner credential from /v1/guest-sessions.' }, accountCookie: { type: 'apiKey', in: 'cookie', name: 'tokai_session', description: 'HttpOnly application account session. Mutations require the matching Origin.' }, jobSecret: { type: 'apiKey', in: 'header', name: 'X-milli-Job-Secret', description: 'Internal callback credential; never available to browsers.' } }, schemas: Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => a.localeCompare(b))) } };
 }

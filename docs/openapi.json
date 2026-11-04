@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Tokai API",
+    "title": "milli API",
     "version": "1.0.0",
     "description": "Generated from the actual Fastify route inventory and shared Zod contracts. Domain refinements, ownership and revision/fence checks also run on the server. Native password signup/signin are provided separately by the restricted Better Auth Next.js proxy at /api/auth; see docs/phase-6-deployment.md. No generated examples contain learner data or credentials."
   },
@@ -310,7 +310,7 @@
       "post": {
         "operationId": "post_internal_jobs_execute",
         "summary": "Execute a fenced Convex job callback",
-        "description": "Internal service operation. Requires X-Tokai-Job-Secret and a currently leased worker/fence. Browser learner credentials cannot authorize this operation.",
+        "description": "Internal service operation. Requires X-milli-Job-Secret and a currently leased worker/fence. Browser learner credentials cannot authorize this operation.",
         "tags": [
           "Internal jobs"
         ],
@@ -535,6 +535,76 @@
         "x-body-limit-bytes": 131072
       }
     },
+    "/v1/courses/start": {
+      "post": {
+        "operationId": "post_v1_courses_start",
+        "summary": "Start an interactive adaptive course session immediately",
+        "tags": [
+          "courses"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "description": "Required for account-cookie mutations and all sign-in/logout requests; must match the configured application origin.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "session"
+                  ],
+                  "properties": {
+                    "session": {
+                      "$ref": "#/components/schemas/SessionSchema"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCourseSessionSchema"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/dictation": {
       "post": {
         "operationId": "post_v1_dictation",
@@ -596,6 +666,33 @@
             }
           }
         }
+      }
+    },
+    "/v1/dictation-stream": {
+      "get": {
+        "operationId": "get_v1_dictation_stream",
+        "summary": "Stream one owned lesson utterance",
+        "description": "Requires matching Origin and a start frame with sessionId and bearer token, validated before speech-provider work. JSON follows DictationStreamClientSchema and DictationStreamServerSchema. Send mono PCM16 at 16 kHz after ready, then finish. Audio limit 30 seconds, authentication deadline five seconds, connection limit 45 seconds.",
+        "tags": [
+          "dictation-stream"
+        ],
+        "security": [],
+        "responses": {
+          "101": {
+            "description": "WebSocket protocol switch."
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072
       }
     },
     "/v1/flashcards/{id}": {
@@ -2308,6 +2405,412 @@
         }
       }
     },
+    "/v1/sessions/{id}/course": {
+      "get": {
+        "operationId": "get_v1_sessions_id_course",
+        "summary": "Read or generate the step-by-step interactive course script and progress",
+        "tags": [
+          "sessions"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Endpoint-specific object; stable nested domain structures are documented in components.schemas."
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072
+      }
+    },
+    "/v1/sessions/{id}/course-help": {
+      "post": {
+        "operationId": "post_v1_sessions_id_course_help",
+        "summary": "Request a milli Socratic hint or explanation for the active step",
+        "tags": [
+          "sessions"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "description": "Required for account-cookie mutations and all sign-in/logout requests; must match the configured application origin.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Endpoint-specific object; stable nested domain structures are documented in components.schemas."
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseHelpRequestSchema"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/course-prepare": {
+      "post": {
+        "operationId": "post_v1_sessions_id_course_prepare",
+        "summary": "Prepare the next pending syllabus chapter in the background",
+        "tags": [
+          "sessions"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "description": "Required for account-cookie mutations and all sign-in/logout requests; must match the configured application origin.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Endpoint-specific object; stable nested domain structures are documented in components.schemas."
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareChapterRequestSchema"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/course-progress": {
+      "put": {
+        "operationId": "put_v1_sessions_id_course_progress",
+        "summary": "Save interactive step progress at the expected revision",
+        "tags": [
+          "sessions"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "description": "Required for account-cookie mutations and all sign-in/logout requests; must match the configured application origin.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Endpoint-specific object; stable nested domain structures are documented in components.schemas."
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveCourseProgressSchema"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/course-speech": {
+      "post": {
+        "operationId": "post_v1_sessions_id_course_speech",
+        "summary": "Synthesize speech for a course step or live tutor turn",
+        "tags": [
+          "sessions"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "description": "Required for account-cookie mutations and all sign-in/logout requests; must match the configured application origin.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseSpeechRequestSchema"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/course-turn": {
+      "post": {
+        "operationId": "post_v1_sessions_id_course_turn",
+        "summary": "Execute an adaptive agentic teaching turn for the active step",
+        "tags": [
+          "sessions"
+        ],
+        "security": [
+          {
+            "guestBearer": []
+          },
+          {
+            "accountCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "description": "Required for account-cookie mutations and all sign-in/logout requests; must match the configured application origin.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Endpoint-specific object; stable nested domain structures are documented in components.schemas."
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe structured application error. Retry only when the returned code and retryability permit it; preserve idempotency identifiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "x-body-limit-bytes": 131072,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseTurnRequestSchema"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{id}/end": {
       "post": {
         "operationId": "post_v1_sessions_id_end",
@@ -3998,7 +4501,7 @@
       "jobSecret": {
         "type": "apiKey",
         "in": "header",
-        "name": "X-Tokai-Job-Secret",
+        "name": "X-milli-Job-Secret",
         "description": "Internal callback credential; never available to browsers."
       }
     },
@@ -4704,6 +5207,358 @@
         },
         "required": [
           "revision"
+        ],
+        "additionalProperties": false
+      },
+      "CourseHelpRequestSchema": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "mode": {
+            "default": "typed",
+            "type": "string",
+            "enum": [
+              "typed",
+              "spoken"
+            ]
+          },
+          "attempts": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "answerSummary": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "status": {
+            "default": "unanswered",
+            "type": "string",
+            "enum": [
+              "unanswered",
+              "correct",
+              "incorrect",
+              "revealed"
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "CourseSpeechRequestSchema": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+          },
+          "part": {
+            "default": "body",
+            "type": "string",
+            "enum": [
+              "concept",
+              "question",
+              "step",
+              "body",
+              "explanation"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 900
+          }
+        },
+        "additionalProperties": false
+      },
+      "CourseTurnRequestSchema": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "check",
+              "learner-message",
+              "why",
+              "simpler"
+            ]
+          },
+          "mode": {
+            "default": "ui",
+            "type": "string",
+            "enum": [
+              "typed",
+              "spoken",
+              "ui"
+            ]
+          },
+          "learnerText": {
+            "type": "string",
+            "maxLength": 800
+          },
+          "answer": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "mcq"
+                  },
+                  "selected": {
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "selected"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "true-false"
+                  },
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "fill-tiles"
+                  },
+                  "slots": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "slots"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "fill-input"
+                  },
+                  "slots": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 60
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "slots"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "order"
+                  },
+                  "order": {
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "order"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "match"
+                  },
+                  "pairs": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "pairs"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "categorize"
+                  },
+                  "placement": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "placement"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "mark-points"
+                  },
+                  "points": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "minimum": -1000000,
+                          "maximum": 1000000
+                        },
+                        "y": {
+                          "type": "number",
+                          "minimum": -1000000,
+                          "maximum": 1000000
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "points"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "slider"
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": -1000000,
+                    "maximum": 1000000
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "answerSummary": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "correct": {
+            "type": "boolean"
+          },
+          "attempts": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "stage": {
+            "default": "practice",
+            "type": "string",
+            "enum": [
+              "teach",
+              "practice",
+              "checked"
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "event"
         ],
         "additionalProperties": false
       },
@@ -6036,6 +6891,17 @@
         ],
         "additionalProperties": false
       },
+      "PrepareChapterRequestSchema": {
+        "type": "object",
+        "properties": {
+          "chapterIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          }
+        },
+        "additionalProperties": false
+      },
       "PrivacyUpdateSchema": {
         "type": "object",
         "properties": {
@@ -6136,6 +7002,130 @@
           "cardRevision",
           "expectedScheduleRevision",
           "rating"
+        ],
+        "additionalProperties": false
+      },
+      "SaveCourseProgressSchema": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 9007199254740991
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "chapter": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 5
+              },
+              "step": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 11
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "teach",
+                  "practice"
+                ]
+              },
+              "xp": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "results": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "correct": {
+                      "type": "boolean"
+                    },
+                    "attempts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 99
+                    },
+                    "revealed": {
+                      "type": "boolean"
+                    },
+                    "xp": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  },
+                  "required": [
+                    "correct",
+                    "attempts",
+                    "revealed",
+                    "xp"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "history": {
+                "maxItems": 24,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "learner",
+                        "tutor"
+                      ]
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 800
+                    },
+                    "stepId": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+                    },
+                    "intent": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "text",
+                    "stepId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "completedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "chapter",
+              "step",
+              "xp",
+              "results"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "revision",
+          "progress"
         ],
         "additionalProperties": false
       },
@@ -9384,6 +10374,160 @@
         "required": [
           "messageId"
         ]
+      },
+      "StartCourseSessionSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 160
+          },
+          "mode": {
+            "default": "live",
+            "type": "string",
+            "enum": [
+              "sample",
+              "live"
+            ]
+          },
+          "goal": {
+            "default": "",
+            "type": "string",
+            "maxLength": 500
+          },
+          "sourceIds": {
+            "default": [],
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "grounding": {
+            "default": "general",
+            "type": "string",
+            "enum": [
+              "general",
+              "sources-only"
+            ]
+          },
+          "preferences": {
+            "type": "object",
+            "properties": {
+              "displayName": {
+                "default": "",
+                "type": "string",
+                "maxLength": 80
+              },
+              "level": {
+                "default": "beginner",
+                "type": "string",
+                "enum": [
+                  "beginner",
+                  "intermediate",
+                  "advanced"
+                ]
+              },
+              "goal": {
+                "default": "",
+                "type": "string",
+                "maxLength": 500
+              },
+              "lessonMinutes": {
+                "default": 15,
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 60
+              },
+              "language": {
+                "default": "english",
+                "type": "string",
+                "enum": [
+                  "english",
+                  "spanish",
+                  "german",
+                  "french",
+                  "italian",
+                  "portuguese"
+                ]
+              },
+              "voiceId": {
+                "default": "aai-audrey",
+                "type": "string",
+                "enum": [
+                  "aai-audrey",
+                  "aai-kyla",
+                  "aai-sara",
+                  "aai-peter",
+                  "aai-titus",
+                  "aai-nancy",
+                  "aai-troy",
+                  "aai-jane",
+                  "aai-michael",
+                  "aai-constanza",
+                  "aai-magdalena",
+                  "aai-donatien",
+                  "aai-benicio"
+                ]
+              },
+              "explanationStyle": {
+                "default": "step-by-step",
+                "type": "string",
+                "enum": [
+                  "concise",
+                  "step-by-step",
+                  "slower"
+                ]
+              },
+              "timezone": {
+                "default": "UTC",
+                "type": "string",
+                "maxLength": 80
+              },
+              "reducedMotion": {
+                "default": false,
+                "type": "boolean"
+              },
+              "highContrast": {
+                "default": false,
+                "type": "boolean"
+              },
+              "fontScale": {
+                "default": "normal",
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "large"
+                ]
+              },
+              "retainTranscript": {
+                "default": true,
+                "type": "boolean"
+              },
+              "retainRecapAudio": {
+                "default": false,
+                "type": "boolean"
+              },
+              "retentionDays": {
+                "default": 30,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 365
+              }
+            },
+            "additionalProperties": false
+          },
+          "featured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "topic"
+        ],
+        "additionalProperties": false
       },
       "SubmitAssessmentSchema": {
         "type": "object",

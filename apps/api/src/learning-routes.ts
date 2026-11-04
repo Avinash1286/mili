@@ -1,14 +1,14 @@
-import { AssessmentRequestSchema, AssistanceRequestSchema, AppealRequestSchema, CardUpdateSchema, CardMergeSchema, RecallAnswerSchema } from '@tokai/contracts';
+import { AssessmentRequestSchema, AssistanceRequestSchema, AppealRequestSchema, CardUpdateSchema, CardMergeSchema, RecallAnswerSchema } from '@milli/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { AssessmentPresentationSchema, SubmitAssessmentSchema, ReviewSubmissionSchema, LearningCardSchema, type AssessmentPresentation, type LearningCard, type ReviewReceipt } from '@tokai/contracts';
-import { StoreError, type Principal } from '@tokai/db';
-import { createPresentation, applyAssistance, projectAssessment, evaluateAttempt, deriveMastery, invalidateMasteryEvidence, reviseEvaluation, reviseCard, mergeDuplicateCards, createReviewReceipt, createCardSchedule } from '@tokai/learning';
-import { createGeminiRubricGrader, generateLearningCards } from '@tokai/tutor-core/learning';
+import { AssessmentPresentationSchema, SubmitAssessmentSchema, ReviewSubmissionSchema, LearningCardSchema, type AssessmentPresentation, type LearningCard, type ReviewReceipt } from '@milli/contracts';
+import { StoreError, type Principal } from '@milli/db';
+import { createPresentation, applyAssistance, projectAssessment, evaluateAttempt, deriveMastery, invalidateMasteryEvidence, reviseEvaluation, reviseCard, mergeDuplicateCards, createReviewReceipt, createCardSchedule } from '@milli/learning';
+import { createGeminiRubricGrader, generateLearningCards } from '@milli/tutor-core/learning';
 import { liveModels, liveModelsConfigured } from './live-models.js';
 import { sources } from './artifact-jobs.js';
 import { invalidateConcepts, invalidateStudyArtifacts } from './corrections.js';
-import { synthesizeSpeech } from '@tokai/speech';
+import { synthesizeSpeech } from '@milli/speech';
 import { requestSignal } from './request-lifecycle.js';
 import { principal, parse, optionalResource, authoredPack, definition, definitions, initializeLearning, learningData, enqueueArtifact, reflectMastery, preferences, metered, bumpSession, type AttemptRecord, type ProductContext } from './product-context.js';
 

@@ -1,5 +1,5 @@
 /* Audio runs off the UI thread. No provider credentials or network access. */
-class TokaiCapture extends AudioWorkletProcessor {
+class milliCapture extends AudioWorkletProcessor {
   constructor() {
     super();
     this.ratio = sampleRate / 16000;
@@ -40,7 +40,7 @@ class TokaiCapture extends AudioWorkletProcessor {
   }
 }
 
-class TokaiPlayback extends AudioWorkletProcessor {
+class milliPlayback extends AudioWorkletProcessor {
   constructor() {
     super(); this.epoch = 0; this.streams = []; this.queued = 0; this.ticks = 0;
     this.port.onmessage = ({ data }) => this.receive(data);
@@ -96,5 +96,5 @@ class TokaiPlayback extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('tokai-capture', TokaiCapture);
-registerProcessor('tokai-playback', TokaiPlayback);
+registerProcessor('tokai-capture', milliCapture);
+registerProcessor('tokai-playback', milliPlayback);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeAudioFrame, type Session } from '@tokai/contracts';
+import { decodeAudioFrame, type Session } from '@milli/contracts';
 import { api, RequestError } from '../src/lib/api';
 import { VoiceRuntime } from '../src/lib/voice-runtime';
 

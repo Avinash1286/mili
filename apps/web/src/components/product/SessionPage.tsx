@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { Artifact, Session } from '@tokai/contracts';
+import type { Artifact, Session } from '@milli/contracts';
 import { api, downloadBlob, errorText, type LearningState } from '@/lib/api';
 import { fileExpired, useFileExpiry } from '@/lib/file-expiry';
 import { ProductShell, StatusMessage } from './ProductShell';

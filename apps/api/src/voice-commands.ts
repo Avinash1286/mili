@@ -1,4 +1,4 @@
-import type { VoiceCommand } from '@tokai/contracts';
+import type { VoiceCommand } from '@milli/contracts';
 
 const normalize = (text: string) => text.toLowerCase().replace(/3[\s-]?d|three[\s-]d/g, '3d').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
   .replace(/^(hey |ok |okay )?(milli |millie |molly )?/, '').replace(/^(can you |could you |please )+/, '').replace(/( for me)?( please)?( now)?$/, '');

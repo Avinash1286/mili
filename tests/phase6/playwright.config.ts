@@ -13,5 +13,5 @@ export default defineConfig({
   testMatch: '*.spec.ts',
   outputDir: '../../test-results/phase6',
   reporter: [['list'], ['json', { outputFile: resolve(workspace, 'test-results/phase6/report.json') }]],
-  webServer: servers.map(server => ({ ...server, cwd: workspace, ...(process.env.TOKAI_E2E_PRODUCTION === '1' && server.url === 'http://localhost:3000' ? { command: 'pnpm --filter @tokai/web start' } : {}) })),
+  webServer: servers.map(server => ({ ...server, cwd: workspace, ...(process.env.TOKAI_E2E_PRODUCTION === '1' && server.url === 'http://localhost:3000' ? { command: 'pnpm --filter @milli/web start' } : {}) })),
 });

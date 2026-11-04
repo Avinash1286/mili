@@ -1,4 +1,4 @@
-# Tokai spatial lessons
+# milli spatial lessons
 
 These four GLB models are original procedural teaching illustrations, generated
 from the source in `apps/web/src/lib/spatial/build-assets.ts`. No third-party

@@ -15,7 +15,7 @@ export const run = internalAction({
       if (!base || !secret) throw new Error('EXECUTOR_NOT_CONFIGURED');
       const endpoint = new URL('/internal/jobs/execute', base);
       if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) throw new Error('INVALID_EXECUTOR');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Tokai-Job-Secret': secret };
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-milli-Job-Secret': secret };
       // An optional project-scoped Vercel automation token opens only the fixed
       // executor destination; the application callback secret is still required.
       if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) headers['x-vercel-protection-bypass'] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;

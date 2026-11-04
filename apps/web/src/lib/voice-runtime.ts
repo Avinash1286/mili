@@ -1,4 +1,4 @@
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceCommand, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection, type PracticeResponse } from '@tokai/contracts';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceCommand, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection, type PracticeResponse } from '@milli/contracts';
 import { api, errorText, RequestError, voiceSocketUrl } from './api';
 
 export type VoiceView = {

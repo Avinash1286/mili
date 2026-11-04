@@ -1,8 +1,8 @@
-import { ArtifactRequestSchema, ShareRequestSchema } from '@tokai/contracts';
+import { ArtifactRequestSchema, ShareRequestSchema } from '@milli/contracts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { type Artifact, type StudyPack, type ShareLink, StudyPackSchema } from '@tokai/contracts';
-import { StoreError } from '@tokai/db';
+import { type Artifact, type StudyPack, type ShareLink, StudyPackSchema } from '@milli/contracts';
+import { StoreError } from '@milli/db';
 import { principal, parse, enqueueArtifact, type ProductContext } from './product-context.js';
 
 type Params = { id: string };

@@ -47,3 +47,7 @@ export const TOPICS: { id: Topic; title: string; subject: string; description: s
 ];
 
 export * from './http';
+export * from './course';
+export * from './course-engine';
+
+export * from './dictation-stream';

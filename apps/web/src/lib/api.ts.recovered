@@ -1,6 +1,6 @@
 import { GuestResponseSchema, SessionSchema, CapabilitiesSchema, VoiceTicketSchema, IdentitySchema, LearnerPreferencesSchema, SourceSchema, UploadIntentSchema, ArtifactSchema, ShareLinkSchema, PublicAssessmentSchema, AssessmentPresentationSchema, AssessmentAttemptSchema, AssessmentEvaluationSchema, MasteryEstimateSchema, LearningCardSchema, ReviewReceiptSchema, StudyPackSchema, CreateLessonSchema,
   type Session, type Topic, type Board, type BoardTransaction, type MapUpdate, type SelectionContext, type Identity, type LearnerPreferences, type CreateLesson, type Source, type PublicAssessment, type AssessmentAttempt, type AssessmentEvaluation, type MasteryEstimate, type LearningCard, type StudyPack, type Artifact, type SubmitAssessment, type ReviewSubmission, type UsageSummary, type PracticeResponse,
-} from '@tokai/contracts';
+} from '@milli/contracts';
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 const KEY = 'tokai.guest.v1';
 let pendingGuest: Promise<string> | undefined;

@@ -4,7 +4,7 @@ Use this checklist to exercise local camera gestures and the catalog of educatio
 
 ## Start and privacy
 
-Run `pnpm dev` from `F:\mili` and open [Tokai](http://localhost:3000). Start a **Guided sample** to explore manual controls without a tutor request. **Live AI** actions use the configured Gemini and AssemblyAI accounts. No account upgrade or LLM Gateway setup is needed.
+Run `pnpm dev` from `F:\mili` and open [milli](http://localhost:3000). Start a **Guided sample** to explore manual controls without a tutor request. **Live AI** actions use the configured Gemini and AssemblyAI accounts. No account upgrade or LLM Gateway setup is needed.
 
 The camera should start only after an explicit enable action. Gesture processing stays in the browser. A gesture sends its semantic action or selection to the application, not a continuous video feed. The separate **Preview drawing to share** flow still requires explicit sharing of a board crop; enabling gestures is not consent to share camera images.
 

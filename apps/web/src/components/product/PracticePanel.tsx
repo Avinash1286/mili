@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SubmitAssessmentSchema, type PublicAssessment, type AssessmentPresentation, type AssessmentAnswer, type AssessmentAttempt, type AssessmentEvaluation, type TutorPracticeState } from '@tokai/contracts';
+import { SubmitAssessmentSchema, type PublicAssessment, type AssessmentPresentation, type AssessmentAnswer, type AssessmentAttempt, type AssessmentEvaluation, type TutorPracticeState } from '@milli/contracts';
 import { api, errorText, type LearningState } from '@/lib/api';
 import { DictationInput } from './DictationInput';
 import { LearningDiagram } from './LearningDiagram';

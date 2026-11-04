@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import type { Session, Board, ConceptMap, SelectionContext, SpatialSelection } from '@tokai/contracts';
+import type { Session, Board, ConceptMap, SelectionContext, SpatialSelection } from '@milli/contracts';
 import { initialVoiceView, VoiceRuntime } from '@/lib/voice-runtime';
 
 export function useVoiceSession(id: string, onSession: (session: Session) => void, selectedNodeId?: string, ended = false, selection?: SelectionContext, onBoard?: (board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[], spatialState?: SpatialSelection, visualSurface?: 'board' | 'spatial') => Promise<boolean>, onMap?: (map: ConceptMap) => void) {

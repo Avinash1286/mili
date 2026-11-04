@@ -1,5 +1,5 @@
-import { StoreError } from '@tokai/db';
-import type { VerifiedModelLimit } from '@tokai/contracts';
+import { StoreError } from '@milli/db';
+import type { VerifiedModelLimit } from '@milli/contracts';
 
 /** Metadata lookup only; fixed Google origin, no redirects, no prompt or key in logs. */
 export async function lookupModelLimits(model: string, apiKey: string | undefined, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<VerifiedModelLimit> {

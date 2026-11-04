@@ -19,7 +19,7 @@ export type SpatialModel = {
 const part = (id: string, label: string, description: string, x: number, y: number, color: string, width = 110, height = 64, shape: 'ellipse' | 'rectangle' = 'ellipse'): SpatialPart => ({ id, label, description, conceptIds: [id], meshNames: [id], diagram: { x, y, width, height, color, shape } });
 const common = (id: SpatialModelId) => ({
   id, assetVersion: '1.0.0', assetUrl: `/models/${id}.glb`, checksum: SPATIAL_ASSET_HASHES[id] ?? '', license: 'MIT',
-  attribution: 'Original procedural geometry created for Tokai (2026). Source code and assets are included; no third-party meshes or textures.',
+  attribution: 'Original procedural geometry created for milli (2026). Source code and assets are included; no third-party meshes or textures.',
   budget: { maxBytes: 2_000_000, maxTriangles: 50_000, maxTextures: 0, maxMeshes: 160 },
 });
 export const SPATIAL_CATALOG: SpatialModel[] = [

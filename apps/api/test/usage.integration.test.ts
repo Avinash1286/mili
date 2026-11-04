@@ -1,9 +1,9 @@
 import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ConvexStore, StoreError, type Principal } from '@tokai/db';
+import { ConvexStore, StoreError, type Principal } from '@milli/db';
 import { UsageMeter, type UsageLease } from '../src/usage.js';
-import { createLesson } from '@tokai/tutor-core';
+import { createLesson } from '@milli/tutor-core';
 import { randomUUID } from 'node:crypto';
 
 describe.skipIf(process.env.TOKAI_TEST_CONVEX !== '1')('actual Convex usage admission', () => {

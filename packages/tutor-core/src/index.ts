@@ -6,3 +6,19 @@ export { fastProvidersFromEnv } from './openai-compatible.js';
 export { validateTeachingPlan, normalizeTeachingReply, plainTeachingBeat, splitTeachingText, projectTeachingProposal } from './teaching.js';
 export { generateVisionExplanation, validateVisionImage, VisionError, type VisionInput } from './vision.js';
 export { groundSpatialSelection } from './spatial.js';
+export { AUTHORED_COURSE_SCRIPTS, getAuthoredCourseScript } from './course-samples.js';
+export {
+  generateInitialCourse,
+  generateNextCourseChapter,
+  generateCourseScript,
+  runAgenticCourseTurn,
+  deterministicAgenticTurn,
+  buildDeterministicRemedialStep,
+  buildFallbackChapterSteps,
+  buildFallbackCourseScript,
+  generateCourseHelp,
+  deterministicCourseHelp,
+  type GenerateCourseInput,
+  type GenerateChapterInput,
+  type AgenticTurnInput,
+} from './course.js';

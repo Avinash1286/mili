@@ -5,7 +5,7 @@ import { makeFunctionReference } from 'convex/server';
 import { v } from 'convex/values';
 import { updateStorageInventory } from './usage';
 export const addFile = internalAction({ args: {}, handler: async ctx => {
-  const text = 'Tokai isolated restore verification.\n'.repeat(1024);
+  const text = 'milli isolated restore verification.\n'.repeat(1024);
   const storageId = await ctx.storage.store(new Blob([text], { type: 'text/plain' }));
   await ctx.runMutation(makeFunctionReference('restoreProbe:saveFile'), { storageId, size: new TextEncoder().encode(text).length });
   return { added: true };

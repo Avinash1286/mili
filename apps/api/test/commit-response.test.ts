@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { FileStore, StoreError } from '@tokai/db';
+import { FileStore, StoreError } from '@milli/db';
 import { createApp } from '../src/app.js';
 import { VoiceManager } from '../src/voice.js';
 

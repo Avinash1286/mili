@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { Session } from '@tokai/contracts';
+import type { Session } from '@milli/contracts';
 import { api, errorText, type Me } from '@/lib/api';
 import { EmptyState, ProductShell, StatusMessage } from './ProductShell';
 import { SourceManager } from './SourceManager';

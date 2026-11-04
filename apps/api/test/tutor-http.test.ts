@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { plainTeachingBeat } from '@tokai/tutor-core';
-import { getLessonPack } from '@tokai/learning';
+import { plainTeachingBeat } from '@milli/tutor-core';
+import { getLessonPack } from '@milli/learning';
 import { createApp } from '../src/app.js';
 
 it('connects a tutor question to a real attempt and deduplicates HTTP answers before any new provider work', async () => {

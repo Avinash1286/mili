@@ -69,22 +69,22 @@ importers:
       '@pdf-lib/fontkit':
         specifier: 1.1.1
         version: 1.1.1
-      '@tokai/contracts':
+      '@milli/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@tokai/db':
+      '@milli/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@tokai/grounding':
+      '@milli/grounding':
         specifier: workspace:*
         version: link:../../packages/grounding
-      '@tokai/learning':
+      '@milli/learning':
         specifier: workspace:*
         version: link:../../packages/learning
-      '@tokai/speech':
+      '@milli/speech':
         specifier: workspace:*
         version: link:../../packages/speech
-      '@tokai/tutor-core':
+      '@milli/tutor-core':
         specifier: workspace:*
         version: link:../../packages/tutor-core
       fastify:
@@ -115,7 +115,7 @@ importers:
       '@mediapipe/tasks-vision':
         specifier: 1.2.0
         version: 1.2.0
-      '@tokai/contracts':
+      '@milli/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       better-auth:
@@ -136,6 +136,9 @@ importers:
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
+      thinking-orbs:
+        specifier: ^0.3.2
+        version: 0.3.2(react@19.3.1)
       three:
         specifier: 0.187.0
         version: 0.187.0
@@ -158,7 +161,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@tokai/contracts':
+      '@milli/contracts':
         specifier: workspace:*
         version: link:../contracts
       convex:
@@ -179,10 +182,10 @@ importers:
       '@napi-rs/canvas':
         specifier: 1.1.0
         version: 1.1.0
-      '@tokai/contracts':
+      '@milli/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@tokai/db':
+      '@milli/db':
         specifier: workspace:*
         version: link:../db
       pdfjs-dist:
@@ -194,7 +197,7 @@ importers:
 
   packages/learning:
     dependencies:
-      '@tokai/contracts':
+      '@milli/contracts':
         specifier: workspace:*
         version: link:../contracts
 
@@ -213,7 +216,7 @@ importers:
       '@google/genai':
         specifier: 2.32.0
         version: 2.32.0
-      '@tokai/contracts':
+      '@milli/contracts':
         specifier: workspace:*
         version: link:../contracts
       zod:
@@ -3491,6 +3494,11 @@ packages:
 
   text-decoder@1.2.7:
     resolution: {integrity: sha512-vlLytXkeP4xvEq2otHeJfSQIRyWxo/oZGEbXrtEEF9Hnmrdly59sUbzZ/QgyWuLYHctCHxFF4tRQZNQ9k60ExQ==}
+
+  thinking-orbs@0.3.2:
+    resolution: {integrity: sha512-QZFeBaPEzqhjiZoXy961EvDgaXk2WgXacF3Rbz+Sj5IfzDzBvTC86vdREUHniBffYibJFKSwbfllxLUdI/Xv6g==}
+    peerDependencies:
+      react: '>=18.0.0'
 
   thread-stream@4.2.1:
     resolution: {integrity: sha512-Stg6edJXC/6/xqGwSXwFokrUhChJ18amEjpKH89WrQQ0oVFDF+pUUcTpiwWhFUrE89Vf16FBOlwhaw+lescxMQ==}
@@ -6785,6 +6793,10 @@ snapshots:
       b4a: 1.9.0
     transitivePeerDependencies:
       - react-native-b4a
+
+  thinking-orbs@0.3.2(react@19.3.1):
+    dependencies:
+      react: 19.3.1
 
   thread-stream@4.2.1:
     dependencies:

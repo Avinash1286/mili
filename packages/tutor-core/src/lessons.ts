@@ -1,4 +1,4 @@
-import { TOPICS, type Board, type Session, type Topic } from '@tokai/contracts';
+import { TOPICS, type Board, type Session, type Topic } from '@milli/contracts';
 
 type Lesson = {
   intro: string;

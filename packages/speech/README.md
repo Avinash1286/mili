@@ -1,11 +1,11 @@
-# Tokai speech adapters
+# milli speech adapters
 
-`@tokai/speech` is the **server-only** AssemblyAI integration. It implements HTTP WAV synthesis, streaming STT, streaming PCM TTS, bounded provider cancellation, and word-boundary delivery. All permanent credentials remain in Authorization headers in the server process. No automatic retries of potentially billable work occur. The package's tests use local mock WebSocket providers; **credentialed streaming has not been verified**.
+`@milli/speech` is the **server-only** AssemblyAI integration. It implements HTTP WAV synthesis, streaming STT, streaming PCM TTS, bounded provider cancellation, and word-boundary delivery. All permanent credentials remain in Authorization headers in the server process. No automatic retries of potentially billable work occur. The package's tests use local mock WebSocket providers; **credentialed streaming has not been verified**.
 
-The main entry point imports Node APIs and `ws`. Browser consumers may import only `@tokai/speech/epochs` and `@tokai/speech/timing`. The HTTP API remains `synthesizeSpeech({text, apiKey, voiceId?, signal?})`, returning `{audio: Buffer, contentType: 'audio/wav'}`. HTTP abort does not guarantee upstream cancellation.
+The main entry point imports Node APIs and `ws`. Browser consumers may import only `@milli/speech/epochs` and `@milli/speech/timing`. The HTTP API remains `synthesizeSpeech({text, apiKey, voiceId?, signal?})`, returning `{audio: Buffer, contentType: 'audio/wav'}`. HTTP abort does not guarantee upstream cancellation.
 
 ```ts
-import { createTranscriber, createSynthesizer } from '@tokai/speech';
+import { createTranscriber, createSynthesizer } from '@milli/speech';
 
 const transcriber = await createTranscriber({
   apiKey, onPartial, onFinal, onSpeechStarted, onError,
@@ -30,4 +30,4 @@ The second factory argument supports trusted dependency injection: `{webSocketFa
 
 `PlaybackTimingMap` maps each connection/flush ID independently: subtract the provider's audio start offset, then anchor to that output's actual playback start. Cancelled provider audio never becomes a browser clock offset. Clear scheduled playback and highlights when invalidating an `OutputEpoch`. Word boundaries arrive after complete audio delivery, can be absent, and may be too late for the initial playback; `liveWordTimings` therefore remains false while `wordBoundaries` is true.
 
-Checks: `pnpm --filter @tokai/speech typecheck` and `pnpm --filter @tokai/speech test`. See [provider protocol and live probe](../../docs/provider-protocol.md) for the verified wire contract, limits and remaining live-validation gates.
+Checks: `pnpm --filter @milli/speech typecheck` and `pnpm --filter @milli/speech test`. See [provider protocol and live probe](../../docs/provider-protocol.md) for the verified wire contract, limits and remaining live-validation gates.

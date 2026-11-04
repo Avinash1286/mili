@@ -1,6 +1,6 @@
 # Application voice and teaching protocol
 
-The browser speaks Tokai's versioned protocol to the local Fastify service. Provider protocols are translated on the server; provider keys never enter the browser. See [provider protocol notes](provider-protocol.md) for the AssemblyAI wire format and [imp.md](../imp.md) for the full product target.
+The browser speaks milli's versioned protocol to the local Fastify service. Provider protocols are translated on the server; provider keys never enter the browser. See [provider protocol notes](provider-protocol.md) for the AssemblyAI wire format and [imp.md](../imp.md) for the full product target.
 
 ## Ownership and reconnect
 
@@ -53,3 +53,8 @@ Server credits limit outstanding browser audio to four seconds. Provider audio w
 - Phase 2 provider checks and the user's voice test passed. Objective acoustic latency and representative-device quality targets in `imp.md` remain unmeasured; Phase 3 has its own browser and live-tool acceptance gate.
 
 The current persistence layer remains file-backed and single-process. PostgreSQL/OIDC/Redis and cloud deployment are still open work tracked in the full plan.
+
+
+## Course microphone relay
+
+`/v1/dictation-stream` is a separate, one-utterance WebSocket for the course player. After matching Origin, send `{type:"start", sessionId, token}`; signed-in clients may omit the token and use the existing cookie. The server validates current ownership and live mode before opening AssemblyAI. Wait for `{type:"ready"}`, then send little-endian mono PCM16 at 16 kHz in frames no larger than 100 ms. Send `{type:"finish"}` after the capture worklet flushes. The server returns `{type:"transcript", text}` or `{type:"error", message}` and closes. Contracts validate JSON; audio stays binary. Limits are five seconds to authenticate, thirty seconds of audio, forty-five seconds total, four active owners and one stream per owner. Closing cancels provider work and settles actual captured duration. The HTTP dictation route remains for other input surfaces.

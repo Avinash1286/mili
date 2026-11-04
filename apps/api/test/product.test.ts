@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, afterEach, it, expect } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { FileStore } from '@tokai/db';
-import { getLessonPack } from '@tokai/learning';
-import { LearnerPreferencesSchema, TeachingBeatSchema } from '@tokai/contracts';
+import { FileStore } from '@milli/db';
+import { getLessonPack } from '@milli/learning';
+import { LearnerPreferencesSchema, TeachingBeatSchema } from '@milli/contracts';
 import { createApp } from '../src/app.js';
 
 let app: FastifyInstance, directory: string, store: FileStore, token: string, other: string;

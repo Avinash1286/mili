@@ -1,4 +1,4 @@
-import type { Board } from '@tokai/contracts';
+import type { Board } from '@milli/contracts';
 import styles from './Product.module.css';
 
 /** A read-only semantic diagram with the same labels available as ordinary text. */

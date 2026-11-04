@@ -1,6 +1,6 @@
 # Original authored reference lessons
 
-These four packs contain original Tokai explanations, worked examples, schematics, assessment prompts and cards. Each pack has eight assessments covering multiple choice, numerical answers, short explanations, spoken explanations and diagram labeling, plus eight cards covering basic, cloze, diagram-label and spoken recall. They are deterministic sample/reference content; they are not mock live provider output.
+These four packs contain original milli explanations, worked examples, schematics, assessment prompts and cards. Each pack has eight assessments covering multiple choice, numerical answers, short explanations, spoken explanations and diagram labeling, plus eight cards covering basic, cloze, diagram-label and spoken recall. They are deterministic sample/reference content; they are not mock live provider output.
 
 The content was checked against the linked publisher/institution references on 2026-11-03. `reference-2026-11-03` identifies that check date, not a publisher's claimed document revision. No textbook exercises or long passages were copied. Diagrams are original semantic schematics and are not to scale. Solar-day calculations explicitly state the 24-hour classroom convention; circuit calculations state their ohmic assumptions; photosynthesis molecule-count exercises state their simplified ratio.
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { ConvexStore, StoreError, type Principal, type Store } from '@tokai/db';
-import { emptyUsage, unboundedUsage, sumObservation, usageKinds, usageLabels, usagePolicy, budgetPolicy, hasBudget, priceUpperBound, usdMicros, summarizeBudget, storageRetentionDays, type VerifiedModelLimit, type UsageKind, type UsageObservation, type UsageSummary, type UsageTotals } from '@tokai/contracts';
+import { ConvexStore, StoreError, type Principal, type Store } from '@milli/db';
+import { emptyUsage, unboundedUsage, sumObservation, usageKinds, usageLabels, usagePolicy, budgetPolicy, hasBudget, priceUpperBound, usdMicros, summarizeBudget, storageRetentionDays, type VerifiedModelLimit, type UsageKind, type UsageObservation, type UsageSummary, type UsageTotals } from '@milli/contracts';
 import { priceUsage, usageRates, type UsageRates } from './usage-pricing.js';
 import { lookupModelLimits } from './model-limits.js';
 

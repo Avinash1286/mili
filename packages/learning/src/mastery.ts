@@ -1,4 +1,4 @@
-import { MasteryEvidenceSchema, MasteryEstimateSchema, type MasteryEvidence, type MasteryEstimate } from '@tokai/contracts';
+import { MasteryEvidenceSchema, MasteryEstimateSchema, type MasteryEvidence, type MasteryEstimate } from '@milli/contracts';
 import { DAY, check, immutable, timestamp, unique } from './common';
 
 /** Evidence is qualitative. Repeating one question on one UTC day cannot create additional support. */

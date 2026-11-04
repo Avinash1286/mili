@@ -1,2 +1,2 @@
-import { NewLesson } from '@/components/product/NewLesson';
-export default function NewLessonPage() { return <NewLesson/>; }
+import { redirect } from 'next/navigation';
+export default function NewLessonPage() { redirect('/learn'); }

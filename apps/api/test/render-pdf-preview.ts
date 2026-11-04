@@ -2,8 +2,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { buildStudyPack, getLessonPack } from '@tokai/learning';
-import { createLesson } from '@tokai/tutor-core';
+import { buildStudyPack, getLessonPack } from '@milli/learning';
+import { createLesson } from '@milli/tutor-core';
 import { renderStudyPackPdf } from '../src/artifact-export';
 const requireGrounding = createRequire(new URL('../../../packages/grounding/package.json', import.meta.url));
 const { createCanvas, DOMMatrix, ImageData, Path2D } = requireGrounding('@napi-rs/canvas');

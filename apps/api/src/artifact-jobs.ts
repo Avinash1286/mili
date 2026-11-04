@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { ArtifactSchema, AssessmentDefinitionSchema, LearningCardSchema, LearningSourceRefSchema, StudyPackSchema, type Artifact, type AssessmentDefinition, type LearningCard, type LearningSourceRef, type Session, type Source, type StudyPack } from '@tokai/contracts';
-import { StoreError, type JobRecord, type Principal, type Resource } from '@tokai/db';
-import { buildStudyPack, createCardSchedule, instantiatePackCards } from '@tokai/learning';
-import { createSynthesizer, TTS_SAMPLE_RATE, type Synthesizer, type SynthesisBoundaries } from '@tokai/speech';
-import { generateAssessment, generateLearningCards, generateRecapDialogue, type RecapDialogue } from '@tokai/tutor-core/learning';
-import { TUTOR_VOICES } from '@tokai/contracts';
+import { ArtifactSchema, AssessmentDefinitionSchema, LearningCardSchema, LearningSourceRefSchema, StudyPackSchema, type Artifact, type AssessmentDefinition, type LearningCard, type LearningSourceRef, type Session, type Source, type StudyPack } from '@milli/contracts';
+import { StoreError, type JobRecord, type Principal, type Resource } from '@milli/db';
+import { buildStudyPack, createCardSchedule, instantiatePackCards } from '@milli/learning';
+import { createSynthesizer, TTS_SAMPLE_RATE, type Synthesizer, type SynthesisBoundaries } from '@milli/speech';
+import { generateAssessment, generateLearningCards, generateRecapDialogue, type RecapDialogue } from '@milli/tutor-core/learning';
+import { TUTOR_VOICES } from '@milli/contracts';
 import { liveModels, liveModelsConfigured } from './live-models.js';
 import { authoredPack, bumpSession, optionalResource, metered, type AttemptRecord, type ProductContext } from './product-context.js';
 import { pcmToWav, renderArtifactExport, renderCardsJson, type ArtifactBytes } from './artifact-export.js';

@@ -1,6 +1,6 @@
 # Learning engine
 
-This package is pure TypeScript. It performs no network requests, database writes or provider calls. `@tokai/learning` is a **server entry point** because it exports the authored packs and their hidden answer keys. Browser code may import `@tokai/learning/browser`, which only exposes due-card filtering and text/CSV/JSON exporters; that entry point never imports lesson content.
+This package is pure TypeScript. It performs no network requests, database writes or provider calls. `@milli/learning` is a **server entry point** because it exports the authored packs and their hidden answer keys. Browser code may import `@milli/learning/browser`, which only exposes due-card filtering and text/CSV/JSON exporters; that entry point never imports lesson content.
 
 The server must owner-scope every supplied record and atomically persist attempts, evaluations, evidence, review receipts and schedule changes. The engine does not authenticate owners. All returned records are cloned and recursively frozen. Server timestamps must be explicit UTC strings.
 
@@ -37,4 +37,4 @@ Review intervals cap at 365 days. Relearning graduation uses half the previous i
 
 The caller supplies owner-scoped attempts and cards; the builder additionally filters them to the session. Audio recap status starts `not-requested`; background generation must update status truthfully. Markdown escapes embedded HTML and markup. CSV protects formula-leading cells and preserves embedded quotes/newlines. JSON preserves specialized cards and source metadata without spreadsheet transformation.
 
-Run `pnpm --filter @tokai/learning typecheck` and `pnpm --filter @tokai/learning test`. Browser/API authorization and concurrent persistence behavior are tested at their respective boundaries.
+Run `pnpm --filter @milli/learning typecheck` and `pnpm --filter @milli/learning test`. Browser/API authorization and concurrent persistence behavior are tested at their respective boundaries.

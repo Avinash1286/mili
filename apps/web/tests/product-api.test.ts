@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LearnerPreferencesSchema } from '@tokai/contracts';
+import { LearnerPreferencesSchema } from '@milli/contracts';
 
 const key = 'tokai.guest.v1';
 const guest = { token: 'guest-token', expiresAt: new Date(Date.now() + 86400000).toISOString() };

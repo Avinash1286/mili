@@ -1,9 +1,9 @@
-import { NativeSessionRequestSchema } from '@tokai/contracts';
+import { NativeSessionRequestSchema } from '@milli/contracts';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { LearnerPreferencesSchema, IdentitySchema } from '@tokai/contracts';
-import { ConvexNativeIdentity, StoreError, type Store, type Principal, type NativeIdentityProvider } from '@tokai/db';
+import { LearnerPreferencesSchema, IdentitySchema } from '@milli/contracts';
+import { ConvexNativeIdentity, StoreError, type Store, type Principal, type NativeIdentityProvider } from '@milli/db';
 import { preferences, parse } from './product-context.js';
 const sessionCookie = 'tokai_session', loginCookie = 'tokai_login';
 const cookieRequests = new WeakSet<FastifyRequest>();
@@ -39,7 +39,7 @@ export async function registerIdentity(app: FastifyInstance, options: IdentityOp
     })().catch(error => { discoveryPromise = undefined; throw error; }); return discoveryPromise;
   }
   const sign = (payload: string) => createHmac('sha256', env.SESSION_SECRET!).update(payload).digest('base64url');
-  const requireOrigin = (request: FastifyRequest) => { if (request.headers.origin !== origin) throw new StoreError(403, 'INVALID_ORIGIN', 'This request must come from the Tokai application.'); };
+  const requireOrigin = (request: FastifyRequest) => { if (request.headers.origin !== origin) throw new StoreError(403, 'INVALID_ORIGIN', 'This request must come from the milli application.'); };
   app.addHook('onRequest', async (request, reply) => {
     const token = cookie(request, sessionCookie); if (!token) return;
     try {

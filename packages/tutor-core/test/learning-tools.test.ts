@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const { generateContent } = vi.hoisted(() => ({ generateContent: vi.fn() }));
 vi.mock('@google/genai', () => ({ GoogleGenAI: class { models = { generateContent }; }, FunctionCallingConfigMode: { VALIDATED: 'VALIDATED' } }));
 import { createLesson, generateTutorReply, type TutorLearningContext } from '../src/index';
-import type { TutorLearningAction } from '@tokai/contracts';
+import type { TutorLearningAction } from '@milli/contracts';
 const input = () => ({ session: createLesson({ id: 'tool-lesson', topic: 'photosynthesis', mode: 'live', now: '2026-11-04T12:00:00.000Z', messageId: 'intro' }), text: 'Ask a saved question.', apiKey: 'offline-fixture', model: 'offline-model', limits: { maxModelCalls: 1, maxRepairAttempts: 0 } });
 const submit = { name: 'submit_teaching_beat', args: { spokenText: 'The model says you mastered the entire subject.', displayText: 'The model says you mastered the entire subject.', conceptIds: [], sourceRefs: [] } };
 beforeEach(() => { generateContent.mockReset(); });

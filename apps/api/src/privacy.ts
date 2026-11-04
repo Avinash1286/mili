@@ -1,5 +1,5 @@
-import type { Artifact, Session, StudyPack } from '@tokai/contracts';
-import type { Principal } from '@tokai/db';
+import type { Artifact, Session, StudyPack } from '@milli/contracts';
+import type { Principal } from '@milli/db';
 import type { ArtifactFile } from './artifact-routes.js';
 import { optionalResource, type ProductContext } from './product-context.js';
 

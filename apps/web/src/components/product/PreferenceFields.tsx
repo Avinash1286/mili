@@ -1,6 +1,6 @@
 'use client';
 
-import { TUTOR_VOICES, type LearnerPreferences } from '@tokai/contracts';
+import { TUTOR_VOICES, type LearnerPreferences } from '@milli/contracts';
 import { VoicePicker } from './VoicePicker';
 import styles from './Product.module.css';
 

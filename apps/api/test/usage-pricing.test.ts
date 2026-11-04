@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { priceUsage, usageRates, priceUpperBound, budgetPolicy } from '../src/usage-pricing.js';
-import { emptyUsage, sumObservation } from '@tokai/contracts';
+import { emptyUsage, sumObservation } from '@milli/contracts';
 
 // Deliberately synthetic rates; these are arithmetic fixtures, not provider prices.
 const rates = usageRates(JSON.stringify({ effectiveDate: '2026-11-04', models: { fixture: { inputPerMillion: 2, outputPerMillion: 8, cachedInputPerMillion: .5 } }, speechPerMillionCharacters: 10, transcriptionPerHour: 3, ingestionPerGiB: 0 }))!;

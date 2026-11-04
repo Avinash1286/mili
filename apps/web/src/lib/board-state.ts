@@ -1,4 +1,4 @@
-import { applyBoardTransaction, type Board, type BoardCommand, type BoardTransaction } from '@tokai/contracts';
+import { applyBoardTransaction, type Board, type BoardCommand, type BoardTransaction } from '@milli/contracts';
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([key, item]) => key !== 'revision' && item !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]));

@@ -3,9 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb, type PDFFont } from 'pdf-lib';
-import { StudyPackSchema, type StudyPack, type Artifact } from '@tokai/contracts';
-import { StoreError } from '@tokai/db';
-import { exportCardsCsv, exportCardsJson, exportStudyPackJson, exportStudyPackMarkdown } from '@tokai/learning';
+import { StudyPackSchema, type StudyPack, type Artifact } from '@milli/contracts';
+import { StoreError } from '@milli/db';
+import { exportCardsCsv, exportCardsJson, exportStudyPackJson, exportStudyPackMarkdown } from '@milli/learning';
 
 export type ArtifactBytes = { body: Buffer; contentType: string; extension: string };
 const FONT_FILES = [['NotoSans-Regular.ttf', 'b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5'], ['NotoSansMath-Regular.ttf', '80b61fd613d3519197e64fff6f7e71fdc7f3e6526440ea4115b554ef7fd59af7']] as const;
@@ -30,7 +30,7 @@ function wrap(text: string, measure: (text: string) => number, width: number): s
 }
 export async function renderStudyPackPdf(raw: StudyPack): Promise<Buffer> {
   const pack = StudyPackSchema.parse(raw), document = await PDFDocument.create();
-  document.registerFontkit(fontkit); document.setTitle(pack.title); document.setAuthor('Tokai'); document.setSubject('Study pack: completed narration, reference material and assessment evidence');
+  document.registerFontkit(fontkit); document.setTitle(pack.title); document.setAuthor('milli'); document.setSubject('Study pack: completed narration, reference material and assessment evidence');
   const fonts = await Promise.all((await loadFonts()).map(bytes => document.embedFont(bytes, { subset: true }))), glyphSets = fonts.map(font => new Set(font.getCharacterSet())), font = fonts[0];
   const runs = (text: string): { text: string; font: PDFFont }[] => {
     const result: { text: string; font: PDFFont }[] = [];
@@ -73,7 +73,7 @@ export async function renderStudyPackPdf(raw: StudyPack): Promise<Buffer> {
     }
     y -= paragraph.heading ? 7 : 9;
   }
-  document.getPages().forEach((item, index) => item.drawText(`Tokai • ${index + 1} / ${document.getPageCount()}`, { x: 48, y: 25, font, size: 8, color: rgb(.4, .43, .4) }));
+  document.getPages().forEach((item, index) => item.drawText(`milli • ${index + 1} / ${document.getPageCount()}`, { x: 48, y: 25, font, size: 8, color: rgb(.4, .43, .4) }));
   return Buffer.from(await document.save());
 }
 export async function renderArtifactExport(pack: StudyPack, format: Artifact['format']): Promise<ArtifactBytes> {

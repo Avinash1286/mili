@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { LearnerPreferencesSchema, type LearnerPreferences } from '@tokai/contracts';
+import { LearnerPreferencesSchema, type LearnerPreferences } from '@milli/contracts';
 import { api } from '@/lib/api';
 import './preferences.css';
 

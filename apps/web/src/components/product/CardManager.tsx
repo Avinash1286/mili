@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { LearningCard } from '@tokai/contracts';
+import type { LearningCard } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
 import { SourceReferences } from './StudyPackContent';
 import { StatusMessage } from './ProductShell';

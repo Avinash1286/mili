@@ -1,2 +1,2 @@
-import { ReviewPage } from '@/components/product/ReviewPage';
-export default function DailyReviewPage() { return <ReviewPage/>; }
+import { redirect } from 'next/navigation';
+export default function DailyReviewPage() { redirect('/learn'); }

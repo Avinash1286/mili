@@ -1,4 +1,4 @@
-import type { Session } from '@tokai/contracts';
+import type { Session } from '@milli/contracts';
 
 export class StoreError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) { super(message); this.name = 'StoreError'; }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { generateContent } = vi.hoisted(() => ({ generateContent: vi.fn() }));
 vi.mock('@google/genai', () => ({ GoogleGenAI: class { models = { generateContent }; }, FunctionCallingConfigMode: { VALIDATED: 'VALIDATED' } }));
 import { createLesson, generateTutorReply } from '../src/index.js';
-import { getSpatialModel } from '@tokai/contracts';
+import { getSpatialModel } from '@milli/contracts';
 
 const input = () => ({
   session: createLesson({ id: 'lesson', topic: 'photosynthesis', mode: 'live', now: '2026-11-03T12:00:00.000Z', messageId: 'intro' }),

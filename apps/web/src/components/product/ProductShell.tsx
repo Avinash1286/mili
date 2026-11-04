@@ -1,7 +1,7 @@
 'use client';
 
 import { BookOpen } from 'lucide-react';
-import type { Identity } from '@tokai/contracts';
+import type { Identity } from '@milli/contracts';
 import { AppNav } from '../AppNav';
 import styles from './Product.module.css';
 

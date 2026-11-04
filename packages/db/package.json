@@ -1,6 +1,6 @@
 {
-  "name": "@tokai/db", "version": "0.1.0", "private": true, "type": "module",
+  "name": "@milli/db", "version": "0.1.0", "private": true, "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit", "build": "tsc --noEmit", "test": "vitest run", "test:integration": "vitest run test/convex.integration.test.ts test/native-auth.integration.test.ts" },
-  "dependencies": { "@tokai/contracts": "workspace:*", "convex": "1.49.0", "jose": "6.2.15", "zod": "4.6.7" }
+  "dependencies": { "@milli/contracts": "workspace:*", "convex": "1.49.0", "jose": "6.2.15", "zod": "4.6.7" }
 }

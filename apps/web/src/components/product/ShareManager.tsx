@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { ShareLink } from '@tokai/contracts';
+import type { ShareLink } from '@milli/contracts';
 import { api, errorText } from '@/lib/api';
 import { StatusMessage } from './ProductShell';
 import styles from './Product.module.css';

@@ -1,5 +1,5 @@
 {
-  "name": "@tokai/web",
+  "name": "@milli/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,13 +12,14 @@
   "dependencies": {
     "@convex-dev/better-auth": "0.12.7",
     "@mediapipe/tasks-vision": "1.2.0",
-    "@tokai/contracts": "workspace:*",
+    "@milli/contracts": "workspace:*",
     "better-auth": "1.6.34",
     "convex": "1.49.0",
     "lucide-react": "1.67.0",
     "next": "16.4.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "thinking-orbs": "^0.3.2",
     "three": "0.187.0"
   },
   "devDependencies": {

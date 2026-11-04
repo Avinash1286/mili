@@ -1,6 +1,6 @@
 {
-  "name": "@tokai/learning", "version": "0.1.0", "private": true, "type": "module",
+  "name": "@milli/learning", "version": "0.1.0", "private": true, "type": "module",
   "exports": { ".": "./src/index.ts", "./browser": "./src/browser.ts" },
   "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
-  "dependencies": { "@tokai/contracts": "workspace:*" }
+  "dependencies": { "@milli/contracts": "workspace:*" }
 }

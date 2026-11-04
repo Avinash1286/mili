@@ -1,2 +1,2 @@
-import { LearningHome } from '@/components/product/LearningHome';
-export default function DashboardPage() { return <LearningHome />; }
+import { redirect } from 'next/navigation';
+export default function DashboardPage() { redirect('/courses'); }

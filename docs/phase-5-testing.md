@@ -24,8 +24,8 @@ Shared pages are read-only and fetch public share data without owner credentials
 
 ## Automated checks
 
-- `pnpm --filter @tokai/web typecheck`
-- `pnpm --filter @tokai/web exec vitest run tests/product-api.test.ts`
+- `pnpm --filter @milli/web typecheck`
+- `pnpm --filter @milli/web exec vitest run tests/product-api.test.ts`
 - `pnpm exec playwright test tests/e2e/product-learning.spec.ts --workers=1`
 - `pnpm test:e2e` for regressions in the earlier voice, board, gesture and spatial flows.
 - The repository-wide typecheck, tests and production build remain required before release. See `docs/progress.md` for the final verification counts and any outstanding limitations.

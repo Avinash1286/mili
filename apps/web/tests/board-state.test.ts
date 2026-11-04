@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBoardTransaction, SelectionContextSchema, type Board } from '@tokai/contracts';
+import { applyBoardTransaction, SelectionContextSchema, type Board } from '@milli/contracts';
 import { boardDiff, localBoardChange, rebaseBoard } from '../src/lib/board-state';
 import { boardBounds, boardFocusTarget, connectorAnchors, exportBoardSvg, fitViewport, zoomViewport } from '../src/lib/board-geometry';
 

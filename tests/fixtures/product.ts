@@ -1,10 +1,21 @@
 // Test-only simulated learning providers. Nothing in apps/web imports authored answer keys.
 import { getLessonPack } from '../../packages/learning/src/index.js';
+import { deterministicAgenticTurn, generateInitialCourse, generateNextCourseChapter, getAuthoredCourseScript } from '../../packages/tutor-core/src/index.js';
 import type { ProductProviders } from '../../apps/api/src/product-context.js';
 import type { Store } from '../../packages/db/src/index.js';
 import type { createApp } from '../../apps/api/src/app.js';
 
 export const productProviders: ProductProviders = {
+  courseInitial: async input => {
+    const authored = getAuthoredCourseScript(input.topic);
+    if (authored && input.settings?.grounding !== 'sources-only') {
+      return { ...structuredClone(authored), provenance: 'generated' };
+    }
+    const generated = await generateInitialCourse({ ...input, mode: 'sample', apiKey: '', model: '' });
+    return { ...generated, provenance: 'generated' };
+  },
+  courseChapter: async input => generateNextCourseChapter({ ...input, apiKey: '', model: '' }),
+  courseTurn: async input => deterministicAgenticTurn(input.course, input.step, input.request),
   recap: async input => ({
     speak: async (text, options = {}) => {
       const identity = { providerSessionId: 'recap-fixture', flushId: 0 }; options.signal?.throwIfAborted(); options.onStart?.(identity);

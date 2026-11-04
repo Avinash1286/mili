@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { FileStore, StoreError, type NativeIdentityProvider } from '@tokai/db';
+import { FileStore, StoreError, type NativeIdentityProvider } from '@milli/db';
 import { registerIdentity } from '../src/identity.js';
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanups.splice(0).reverse()) await fn(); });

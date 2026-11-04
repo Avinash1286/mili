@@ -1,4 +1,4 @@
-import { LearningCardSchema, LearningCardTemplateSchema, ReviewRatingSchema, ReviewReceiptSchema, ReviewScheduleSchema, ReviewSubmissionSchema, type LearningCard, type LearningSourceRef, type LessonPack, type ReviewRating, type ReviewReceipt, type ReviewSchedule, type ReviewSubmission } from '@tokai/contracts';
+import { LearningCardSchema, LearningCardTemplateSchema, ReviewRatingSchema, ReviewReceiptSchema, ReviewScheduleSchema, ReviewSubmissionSchema, type LearningCard, type LearningSourceRef, type LessonPack, type ReviewRating, type ReviewReceipt, type ReviewSchedule, type ReviewSubmission } from '@milli/contracts';
 import { DAY, check, immutable, normalizeText, timestamp, unique } from './common';
 
 export function createCardSchedule(now: string): ReviewSchedule {

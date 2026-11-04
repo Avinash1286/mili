@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { SourceChunk } from '@tokai/db';
+import type { SourceChunk } from '@milli/db';
 
 export const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 export const MAX_SOURCE_PAGES = 20;

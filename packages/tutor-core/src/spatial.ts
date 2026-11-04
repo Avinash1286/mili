@@ -1,4 +1,4 @@
-import { resolveSpatialSelection, type SpatialSelection } from '@tokai/contracts';
+import { resolveSpatialSelection, type SpatialSelection } from '@milli/contracts';
 import { TutorError } from './types.js';
 
 /** Only catalog-authored descriptions enter tutor context; client labels are never trusted. */

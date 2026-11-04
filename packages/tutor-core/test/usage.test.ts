@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { generateContent } = vi.hoisted(() => ({ generateContent: vi.fn() }));
 vi.mock('@google/genai', () => ({ GoogleGenAI: class { models = { generateContent }; }, FunctionCallingConfigMode: { VALIDATED: 'VALIDATED' } }));
-import { SessionSettingsSchema } from '@tokai/contracts';
+import { SessionSettingsSchema } from '@milli/contracts';
 import { createLesson } from '../src/lessons';
 import { generateTutorReply } from '../src/provider';
 import { generateVisionExplanation } from '../src/vision';

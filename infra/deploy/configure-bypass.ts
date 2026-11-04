@@ -12,7 +12,7 @@ if (existing && !args.includes('--retry')) throw new Error('Automation credentia
 const secret = existing ? existing.split('=')[1]!.trim().slice(0, 32) : randomBytes(16).toString('hex');
 if (!/^[a-f0-9]{32}$/.test(secret)) throw new Error('Invalid saved automation credential.');
 await writeFile(file, `VERCEL_AUTOMATION_BYPASS_SECRET=${secret}\n`, { mode: 0o600, flag: existing ? 'w' : 'wx' });
-await writeFile(payload, JSON.stringify({ generate: { secret, note: 'Tokai protected preview job callback and release verification' } }), { mode: 0o600 });
+await writeFile(payload, JSON.stringify({ generate: { secret, note: 'milli protected preview job callback and release verification' } }), { mode: 0o600 });
 const result = spawnSync(process.execPath, [resolve(root, 'node_modules/vercel/dist/index.js'), 'api', `/v1/projects/${project}/protection-bypass`, '--method', 'PATCH', '--input', payload, '--scope', scope, '--silent'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] });
 await unlink(payload);
 if (result.status !== 0 || result.error) throw new Error(`Bypass configuration failed: ${(result.stderr || result.error?.message || '').replaceAll(secret, '[redacted]').slice(-600)}. The generated credential remains in an ignored file for a deliberate retry.`);

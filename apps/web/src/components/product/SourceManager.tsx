@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, FileText, RefreshCw, Trash2, Upload } from 'lucide-react';
-import type { Source } from '@tokai/contracts';
+import type { Source } from '@milli/contracts';
 import { api, downloadBlob, errorText } from '@/lib/api';
 import { fileExpired, useFileExpiry } from '@/lib/file-expiry';
 import { EmptyState, StatusMessage } from './ProductShell';

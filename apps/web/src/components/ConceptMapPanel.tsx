@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { GitBranch, List, RotateCcw, Save, ArrowRight } from 'lucide-react';
-import type { ConceptMap, MapUpdate, Session } from '@tokai/contracts';
+import type { ConceptMap, MapUpdate, Session } from '@milli/contracts';
 import { clamp, connectorAnchors, wrapText } from '@/lib/board-geometry';
 type MapNode = ConceptMap['nodes'][number];
 export function ConceptMapPanel({ session, onSelect, onSave, onEvidence, onCards, disabled = false, panelId, labelledBy }: { panelId?: string; labelledBy?: string; session: Session; onSelect: (node: MapNode) => void; onSave: (update: MapUpdate) => Promise<void>; onEvidence: (ids: string[]) => void; onCards: (ids: string[]) => void; disabled?: boolean }) {

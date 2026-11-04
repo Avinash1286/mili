@@ -3,8 +3,8 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import type { FastifyInstance } from 'fastify';
-import { TeachingBeatProposalSchema, type Session } from '@tokai/contracts';
-import type { TutorInput, TutorReply } from '@tokai/tutor-core';
+import { TeachingBeatProposalSchema, type Session } from '@milli/contracts';
+import type { TutorInput, TutorReply } from '@milli/tutor-core';
 import { createApp } from '../src/app.js';
 
 describe('durable teaching and board operations', () => {

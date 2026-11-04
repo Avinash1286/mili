@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { SessionSchema, type Session } from '@tokai/contracts';
+import { SessionSchema, type Session } from '@milli/contracts';
 import { StoreError, type Principal } from './types.js';
 export const tokenHash = (value: string) => createHash('sha256').update(value).digest('hex');
 export function identifier(value: string, name = 'identifier') {
