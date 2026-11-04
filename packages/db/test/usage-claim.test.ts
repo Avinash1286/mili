@@ -12,6 +12,8 @@ it('a guest claim merges private evidence without recounting global spend or cha
       { _id: 'other-lesson', scope: 'session:guest-extra/lesson', day: '2026-11-04', kind: 'model', totals: { units: 2, requests: 1, succeeded: 1, failed: 0, inputTokens: 5 } },
     ],
     usageReservations: [{ _id: 'running', id: 'request', ownerId: 'guest', state: 'running', units: 4, sessionId: 'lesson' }],
+    files: [{ _id: 'private-file', ownerId: 'guest', key: 'source/lesson', size: 20 }],
+    usageStorage: [{ _id: 'inventory-guest', ownerId: 'guest', bytes: 20, objects: 1 }, { _id: 'inventory-user', ownerId: 'user', bytes: 5, objects: 1 }, { _id: 'inventory-global', ownerId: 'global', bytes: 25, objects: 2 }],
   };
   const protectedBefore = structuredClone(tables.usageDays!.filter(row => ['global', 'other', 'other-lesson'].includes(row._id)));
   const ctx = { db: {
@@ -26,8 +28,11 @@ it('a guest claim merges private evidence without recounting global spend or cha
   } };
   await claimUsage(ctx, 'guest', 'user');
   expect(tables.usageDays!.filter(row => ['global', 'other', 'other-lesson'].includes(row._id))).toEqual(protectedBefore);
-  expect(tables.usageDays!.find(row => row.scope === 'owner:user')?.totals).toEqual({ units: 7, requests: 2, succeeded: 1, failed: 0, inputTokens: 20 });
+  expect(tables.usageDays!.find(row => row.scope === 'owner:user')?.totals).toEqual({ units: 7, requests: 2, succeeded: 1, failed: 0, inputTokens: 20, unboundedRequests: 2 });
   expect(tables.usageDays!.find(row => row._id === 'lesson')?.scope).toBe('session:user/lesson');
   expect(tables.usageReservations![0]).toMatchObject({ ownerId: 'user', settlementOwnerId: 'guest', state: 'running', units: 4 });
   expect(tables.usageDays!.some(row => row.scope === 'owner:guest')).toBe(false);
+  expect(tables.files![0].ownerId).toBe('user');
+  expect(tables.usageStorage!.find(row => row.ownerId === 'user')).toMatchObject({ bytes: 25, objects: 2 });
+  expect(tables.usageStorage!.find(row => row.ownerId === 'global')).toEqual({ _id: 'inventory-global', ownerId: 'global', bytes: 25, objects: 2 });
 });

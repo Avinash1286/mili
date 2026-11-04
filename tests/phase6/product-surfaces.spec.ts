@@ -34,7 +34,7 @@ test('320 px workspace keeps larger-text study tabs and practice controls reacha
   await page.getByRole('button', { name: 'Study tools', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-font-scale', 'large');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  for (const tab of ['Conversation', 'Concepts', 'Cards', 'Practice']) {
+  for (const tab of ['Conversation', 'Concepts', 'Practice']) {
     const control = page.getByRole('tab', { name: tab, exact: true });
     const bounds = await control.boundingBox();
     expect(bounds).not.toBeNull(); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
@@ -118,7 +118,7 @@ test('saved recap exposes captions and working playback speed controls', async (
   const transport = await fixtureTransport(page), id = await sampleLesson(page);
   await page.goto(`/sessions/${id}`);
   const consent = page.getByRole('checkbox', { name: 'Allow saved recap audio for this lesson', exact: true });
-  await consent.check(); await expect(consent).toBeChecked();
+  await consent.click(); await expect(consent).toBeChecked();
   await page.getByRole('button', { name: 'Generate audio recap', exact: true }).click();
   await page.getByRole('button', { name: 'Load audio recap', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Recap captions', exact: true })).toBeVisible();

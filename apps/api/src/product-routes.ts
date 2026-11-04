@@ -1,11 +1,12 @@
+import { PreferencesUpdateSchema, PrivacyUpdateSchema } from '@tokai/contracts';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { LearnerPreferencesSchema, CreateLessonSchema, SessionEditSchema, NoteUpdateSchema, type Session, type Source, type Artifact } from '@tokai/contracts';
 import type { ArtifactFile } from './artifact-routes.js';
 import { StoreError, type Principal } from '@tokai/db';
 import { createLesson } from '@tokai/tutor-core';
 import { generateLessonPlan } from '@tokai/tutor-core/learning';
+import { liveModels, liveModelsConfigured } from './live-models.js';
 import { getLessonPack } from '@tokai/learning';
 import { clearIdentityCookies } from './identity.js';
 import { retrieveSources } from './source-routes.js';
@@ -17,7 +18,7 @@ export async function registerProduct(app: FastifyInstance, context: ProductCont
   const { store, env, now } = context;
   app.get('/v1/me/preferences', async request => preferences(store, await principal(request, store)));
   app.patch('/v1/me/preferences', async request => {
-    const p = await principal(request, store), input = parse(z.object({ preferences: LearnerPreferencesSchema, revision: z.number().int().min(-1) }).strict(), request.body);
+    const p = await principal(request, store), input = parse(PreferencesUpdateSchema, request.body);
     const record = await store.resources.put(p, 'preferences', p.ownerId, input.preferences, { expectedRevision: input.revision });
     return { preferences: record.data, revision: record.revision };
   });
@@ -40,8 +41,8 @@ export async function registerProduct(app: FastifyInstance, context: ProductCont
     if (settings.sourceIds.length) session.citations = await retrieveSources(context, p, session, `${input.topic} ${settings.goal}`, AbortSignal.any([requestSignal(request), AbortSignal.timeout(20000)]));
     if (pack && input.grounding !== 'sources-only') session.plan = { version: 1, goal: settings.goal, level: settings.preferences.level, minutes: settings.preferences.lessonMinutes, objectives: pack.objectives.slice(0, 8).map(item => item.text), prerequisites: pack.prerequisites.slice(0, 8), steps: pack.objectives.slice(0, 8).map(item => ({ title: item.text.slice(0, 120), objective: item.text })), provenance: 'authored', status: 'ready' };
     else {
-      if (!env.GEMINI_API_KEY || !env.GEMINI_MODEL) throw new StoreError(503, 'TUTOR_UNAVAILABLE', 'Configure Gemini to plan a custom lesson. Prepared samples remain available.');
-      session.plan = await metered(context, p, 'model', 1, onUsage => (context.providers?.plan ?? generateLessonPlan)({ topic: input.topic, settings, sourceRefs: session.citations?.map(citation => ({ ...citation, id: undefined, sourceVersion: String(citation.sourceVersion), snippet: citation.snippet.slice(0, 500) })).map(({ id: _id, ...citation }) => citation), apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]), onUsage }));
+      if (!liveModelsConfigured(env)) throw new StoreError(503, 'TUTOR_UNAVAILABLE', 'Configure a live model to plan a custom lesson. Prepared samples remain available.');
+      session.plan = await metered(context, p, 'model', 1, onUsage => (context.providers?.plan ?? generateLessonPlan)({ topic: input.topic, settings, sourceRefs: session.citations?.map(citation => ({ ...citation, id: undefined, sourceVersion: String(citation.sourceVersion), snippet: citation.snippet.slice(0, 500) })).map(({ id: _id, ...citation }) => citation), ...liveModels(env), signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]), onUsage }));
     }
     if (session.mode === 'live') { session.messages = []; await introduce(p, session, requestSignal(request)); }
     await store.locked(`owner:${p.ownerId}`, async () => {
@@ -74,7 +75,7 @@ export async function registerProduct(app: FastifyInstance, context: ProductCont
     });
   });
   app.patch<{ Params: { id: string } }>('/v1/sessions/:id/privacy', async request => {
-    const p = await principal(request, store), input = parse(z.object({ revision: z.number().int().nonnegative(), retainTranscript: z.boolean().optional(), retainRecapAudio: z.boolean().optional(), retentionDays: z.number().int().min(1).max(365).optional() }).strict(), request.body);
+    const p = await principal(request, store), input = parse(PrivacyUpdateSchema, request.body);
     const result = await store.locked(request.params.id, async () => {
       const old = await store.get(p, request.params.id);
       if (old.revision !== input.revision) throw new StoreError(409, 'VERSION_CONFLICT', 'The lesson changed. Reload before changing its privacy preferences.');

@@ -1,10 +1,11 @@
+import { AssessmentRequestSchema, AssistanceRequestSchema, AppealRequestSchema, CardUpdateSchema, CardMergeSchema, RecallAnswerSchema } from '@tokai/contracts';
 import { createHash, randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { AssessmentPresentationSchema, SubmitAssessmentSchema, ReviewSubmissionSchema, LearningCardSchema, type AssessmentPresentation, type LearningCard, type ReviewReceipt } from '@tokai/contracts';
 import { StoreError, type Principal } from '@tokai/db';
 import { createPresentation, applyAssistance, projectAssessment, evaluateAttempt, deriveMastery, invalidateMasteryEvidence, reviseEvaluation, reviseCard, mergeDuplicateCards, createReviewReceipt, createCardSchedule } from '@tokai/learning';
 import { createGeminiRubricGrader, generateLearningCards } from '@tokai/tutor-core/learning';
+import { liveModels, liveModelsConfigured } from './live-models.js';
 import { sources } from './artifact-jobs.js';
 import { invalidateConcepts, invalidateStudyArtifacts } from './corrections.js';
 import { synthesizeSpeech } from '@tokai/speech';
@@ -16,14 +17,14 @@ const fingerprint = (input: unknown) => createHash('sha256').update(JSON.stringi
 export async function registerLearning(app: FastifyInstance, context: ProductContext) {
   const { store, env, now } = context;
   const grading = new Set<string>();
-  const grader = (p: Principal, sessionId: string): ReturnType<typeof createGeminiRubricGrader> | undefined => context.providers?.rubric || env.GEMINI_API_KEY && env.GEMINI_MODEL ? input => metered(context, p, 'model', 1, onUsage => (context.providers?.rubric ?? createGeminiRubricGrader({ apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, onUsage }))(input), { sessionId }) : undefined;
+  const grader = (p: Principal, sessionId: string): ReturnType<typeof createGeminiRubricGrader> | undefined => context.providers?.rubric || liveModelsConfigured(env) ? input => metered(context, p, 'model', 1, onUsage => (context.providers?.rubric ?? createGeminiRubricGrader({ ...liveModels(env), onUsage }))(input), { sessionId }) : undefined;
   app.get<{ Params: SessionParams }>('/v1/sessions/:id/learning', async request => {
     const p = await principal(request, store);
     await store.locked(request.params.id, async () => initializeLearning(context, p, await store.get(p, request.params.id)));
     return learningData(context, p, await store.get(p, request.params.id));
   });
   app.post<{ Params: SessionParams }>('/v1/sessions/:id/assessments', async request => {
-    const p = await principal(request, store), input = parse(z.object({ assessmentId: z.string().min(1).max(100) }).strict(), request.body);
+    const p = await principal(request, store), input = parse(AssessmentRequestSchema, request.body);
     return store.locked(request.params.id, async () => {
       const session = await store.get(p, request.params.id), def = await definition(store, p, session, input.assessmentId);
       const previous = await store.resources.list<AssessmentPresentation>(p, 'presentation', { sessionId: session.id, limit: 200 });
@@ -39,7 +40,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     });
   });
   for (const mode of ['hint', 'reveal'] as const) app.post<{ Params: PresentationParams }>(`/v1/sessions/:id/assessments/:presentationId/${mode}`, async request => {
-    const p = await principal(request, store), input = parse(z.object({ hintId: z.string().max(100).optional() }).strict(), request.body ?? {});
+    const p = await principal(request, store), input = parse(AssistanceRequestSchema, request.body ?? {});
     return store.locked(request.params.id, async () => {
       const session = await store.get(p, request.params.id), record = await store.resources.get<AssessmentPresentation>(p, 'presentation', request.params.presentationId);
       if (record.sessionId !== session.id) throw new StoreError(404, 'NOT_FOUND', 'Practice question not found.');
@@ -82,7 +83,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     } finally { grading.delete(key); }
   });
   app.post<{ Params: SessionParams & { attemptId: string } }>('/v1/sessions/:id/attempts/:attemptId/appeal', async request => {
-    const p = await principal(request, store), input = parse(z.object({ reason: z.string().trim().min(3).max(2000) }).strict(), request.body);
+    const p = await principal(request, store), input = parse(AppealRequestSchema, request.body);
     const session = await store.get(p, request.params.id), previous = await store.resources.get<AttemptRecord>(p, 'attempt', request.params.attemptId);
     if (previous.sessionId !== session.id) throw new StoreError(404, 'NOT_FOUND', 'Attempt not found.');
     const def = await definition(store, p, session, previous.data.attempt.assessmentId);
@@ -111,7 +112,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     return { cards: cards.slice(0, 100), total: cards.length };
   });
   app.patch<{ Params: SessionParams }>('/v1/flashcards/:id', async request => {
-    const p = await principal(request, store), input = parse(z.object({ revision: z.number().int().positive(), front: z.string().min(1).max(1000).optional(), back: z.string().min(1).max(3000).optional(), hint: z.string().max(1000).optional(), explanation: z.string().max(3000).optional(), cloze: LearningCardSchema.shape.cloze.optional(), status: z.enum(['active', 'discarded', 'needs-correction']).optional() }).strict(), request.body);
+    const p = await principal(request, store), input = parse(CardUpdateSchema, request.body);
     return store.locked(`card:${request.params.id}`, async () => {
       const record = await store.resources.get<LearningCard>(p, 'card', request.params.id);
       if (record.data.revision !== input.revision) throw new StoreError(409, 'VERSION_CONFLICT', 'This card changed. Refresh it before editing.');
@@ -129,10 +130,10 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     let template = authoredPack(session)?.cardTemplates.find(item => item.id === old.templateId);
     const references = await sources(context, p, session);
     if (!template) {
-      if (!env.GEMINI_API_KEY || !env.GEMINI_MODEL) throw new StoreError(503, 'GENERATION_UNAVAILABLE', 'Live card regeneration is not configured. You can edit the correction directly.');
+      if (!liveModelsConfigured(env)) throw new StoreError(503, 'GENERATION_UNAVAILABLE', 'Live card regeneration is not configured. You can edit the correction directly.');
       const rubricAssessments = (await definitions(store, p, session)).filter(item => item.grading.type === 'rubric' && (old.kind !== 'spoken-recall' || item.id === old.rubricAssessmentId));
       if (old.kind === 'spoken-recall' && !rubricAssessments.length) throw new StoreError(409, 'CARD_RUBRIC_UNAVAILABLE', 'The original recall rubric is unavailable. Edit this card directly or generate a new question before regenerating it.');
-      const generated = await metered(context, p, 'model', 1, onUsage => (context.providers?.cards ?? generateLearningCards)({ session: { ...session, lessonFocus: { goal: `Correct this ${old.kind} card: ${old.front}. Check: ${old.back}`.slice(0, 500), nextStep: 'Generate a corrected card for the same concept and format.', phase: 'practice' } }, sourceRefs: references.refs.slice(-12), rubricAssessments, apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]), onUsage }), { sessionId: session.id });
+      const generated = await metered(context, p, 'model', 1, onUsage => (context.providers?.cards ?? generateLearningCards)({ session: { ...session, lessonFocus: { goal: `Correct this ${old.kind} card: ${old.front}. Check: ${old.back}`.slice(0, 500), nextStep: 'Generate a corrected card for the same concept and format.', phase: 'practice' } }, sourceRefs: references.refs.slice(-12), rubricAssessments, ...liveModels(env), signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]), onUsage }), { sessionId: session.id });
       template = generated.find(card => card.kind === old.kind && card.conceptIds.some(id => old.conceptIds.includes(id)) && (old.kind !== 'spoken-recall' || card.rubricAssessmentId === old.rubricAssessmentId));
       if (!template) throw new StoreError(503, 'CARD_GENERATION_FAILED', 'The generated correction did not preserve this card type and concept. Your original card is unchanged.');
     }
@@ -148,7 +149,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     });
   });
   app.post<{ Params: SessionParams }>('/v1/flashcards/:id/merge', async request => {
-    const p = await principal(request, store), input = parse(z.object({ targetId: z.string().min(1).max(100) }).strict(), request.body);
+    const p = await principal(request, store), input = parse(CardMergeSchema, request.body);
     return store.locked(`owner:${p.ownerId}`, async () => {
       const records = await Promise.all([store.resources.get<LearningCard>(p, 'card', request.params.id), store.resources.get<LearningCard>(p, 'card', input.targetId)]);
       const merged = mergeDuplicateCards(records.map(item => item.data), input.targetId, now());
@@ -170,7 +171,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     });
   });
   app.post<{ Params: SessionParams }>('/v1/reviews/:id/answer', async request => {
-    const p = await principal(request, store), input = parse(z.object({ text: z.string().trim().min(1).max(3000), mode: z.enum(['typed', 'spoken']) }).strict(), request.body);
+    const p = await principal(request, store), input = parse(RecallAnswerSchema, request.body);
     const { data: card } = await store.resources.get<LearningCard>(p, 'card', request.params.id);
     const normalize = (text: string) => text.normalize('NFKC').toLowerCase().replace(/[.!?]+$/, '').trim();
     const matches = normalize(input.text) === normalize(card.back);

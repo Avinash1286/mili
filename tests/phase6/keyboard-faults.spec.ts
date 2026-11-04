@@ -49,7 +49,7 @@ test('saved materials recover from a failed initial read without a browser reloa
   await page.getByRole('button', { name: 'Guided sample', exact: true }).click();
   await page.getByRole('button', { name: 'Start my lesson', exact: true }).click();
   await expect(page).toHaveURL(/\/learn\/[a-f0-9-]{36}$/);
-  await expect(page.getByRole('heading', { name: 'Let’s see the bigger picture.', exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Lesson progress', exact: true })).toBeVisible();
   const id = page.url().split('/').at(-1)!;
   let unavailable = true;
   await page.route(`http://localhost:4000/v1/sessions/${id}/learning`, async route => {

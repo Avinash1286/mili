@@ -4,8 +4,9 @@ import type { WebSocket, RawData } from 'ws';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { VoiceClientEventSchema, decodeAudioFrame, encodeAudioFrame, MAX_AUDIO_SAMPLES, type Session, type VoiceClientEvent, type VoiceState, type SelectionContext, type TeachingBeat } from '@tokai/contracts';
 import { createTranscriber, createSynthesizer } from '@tokai/speech';
-import { type GenerateReply, type TutorReply, TutorError, groundSpatialSelection } from '@tokai/tutor-core';
-import type { PracticeResponse } from '@tokai/contracts';
+import { type GenerateReply, type TutorReply, TutorError, groundSpatialSelection, fastProvidersFromEnv } from '@tokai/tutor-core';
+import { matchVoiceCommand } from './voice-commands.js';
+import type { PracticeResponse, VoiceCommand } from '@tokai/contracts';
 import { ApiError, type Store, type Principal } from './store.js';
 import { applySessionBoardTransaction, sceneFailure } from './board-operations.js';
 import { planTeachingBeats, appendTeachingBeats, commitBeatVisuals, markTeachingInterrupted } from './teaching.js';
@@ -117,7 +118,7 @@ export class VoiceManager {
   private checkSession(session: Session) {
     if (session.status !== 'active') throw new ApiError(409, 'SESSION_ENDED', 'This lesson has ended.');
     if (session.mode !== 'live') throw new ApiError(409, 'LIVE_REQUIRED', 'Live voice is available only in a live AI lesson. Sample lessons remain text-based.');
-    if (!this.options.env.GEMINI_API_KEY || !this.options.env.GEMINI_MODEL || !this.options.env.ASSEMBLYAI_API_KEY) throw new ApiError(503, 'VOICE_UNAVAILABLE', 'Live voice requires configured Gemini and AssemblyAI credentials on the server.');
+    if (!(this.options.env.GEMINI_API_KEY && this.options.env.GEMINI_MODEL || fastProvidersFromEnv(this.options.env).length) || !this.options.env.ASSEMBLYAI_API_KEY) throw new ApiError(503, 'VOICE_UNAVAILABLE', 'Live voice requires a configured tutor model and AssemblyAI credentials on the server.');
   }
 }
 
@@ -310,7 +311,9 @@ class VoiceConnection {
             if (!inputValid()) return;
             const presentationId = pendingPresentation; pendingPresentation = undefined;
             if (!this.inputRequested) this.closeInput();
-            if (event.text.trim()) void this.acceptTurn(`stt:${hash(event.turnId)}`, event.text, this.selection, this.selectionContext, presentationId ? { presentationId } : undefined, 'spoken').catch(error => this.fail(error));
+            const command = presentationId ? undefined : matchVoiceCommand(event.text);
+            if (command) void this.runCommand(`stt:${hash(event.turnId)}`, event.text, command).catch(error => this.fail(error));
+            else if (event.text.trim()) void this.acceptTurn(`stt:${hash(event.turnId)}`, event.text, this.selection, this.selectionContext, presentationId ? { presentationId } : undefined, 'spoken').catch(error => this.fail(error));
           },
           onSpeechStarted: () => { if (inputValid() && this.generation) void this.interrupt('Student started speaking'); },
           onError: () => { if (inputValid()) { this.closeInput(true); this.fail(new ApiError(503, 'STT_FAILED', 'Transcription stopped. Use text input or restart the microphone.')); } }
@@ -397,7 +400,7 @@ class VoiceConnection {
     const valid = () => !this.closed && !this.paused && !active.signal.aborted && this.epoch === generationEpoch && this.generation === active;
     const start = this.options.now();
     try {
-      const tutorInput = { session: context, text, selectedNodeId, selection, turnId, inputMode, practiceResponse, apiKey: this.options.env.GEMINI_API_KEY!, model: this.options.env.GEMINI_MODEL!, signal: AbortSignal.any([active.signal, this.lifetime.signal, AbortSignal.timeout(65000)]) };
+      const tutorInput = { session: context, text, selectedNodeId, selection, turnId, inputMode, practiceResponse, apiKey: this.options.env.GEMINI_API_KEY ?? '', model: this.options.env.GEMINI_MODEL ?? '', fastProviders: fastProvidersFromEnv(this.options.env), signal: AbortSignal.any([active.signal, this.lifetime.signal, AbortSignal.timeout(65000)]) };
       const result = await (this.options.tutorWithPrincipal ? this.options.tutorWithPrincipal(tutorInput, this.ticket.principal) : this.options.tutor(tutorInput));
       if (!valid()) return;
       const beats = planTeachingBeats(context, result, turnId, generationEpoch);
@@ -472,6 +475,14 @@ class VoiceConnection {
     }
     if (valid()) await this.speak(beat.spokenText, beat.messageId, beat.turnId, queue.controller, queue.llmMs, beat.beatId, visualReady);
   }
+  private async runCommand(turnId: string, text: string, command: VoiceCommand) {
+    if (this.closed || this.paused) return;
+    this.emit({ type: 'ui.command', turnId, command, text: text.trim().slice(0, 2000) });
+    if (command !== 'repeat') { this.state('listening'); return; }
+    const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
+    const last = [...session.messages].reverse().find(message => message.role === 'tutor');
+    if (last) await this.repeat(last.id); else this.state('listening');
+  }
   private async repeat(messageId: string) {
     if (this.paused) throw new ApiError(409, 'VOICE_PAUSED', 'Resume voice before replaying.');
     let replay: { text: string; displayText: string; turnId: string; controller: AbortController } | undefined;
@@ -505,7 +516,7 @@ class VoiceConnection {
     const stream: Stream = { id: ++this.streamId, epoch: this.epoch, messageId, turnId, beatId, sentSamples: 0, playedSamples: 0, ended: false, cancelled: false, seq: 0, pending: [], pendingSamples: 0, providerDone: false, lastAckAt: this.options.now() };
     this.streams.set(stream.id, stream); this.currentStream = stream;
     while (this.streams.size > 16) this.streams.delete(this.streams.keys().next().value!);
-    const started = this.options.now(); let firstAudioMs: number | undefined; let synth: Synthesizer | undefined;
+    const started = this.options.now(); let firstAudioMs: number | undefined; let synth: Synthesizer | undefined; let segmentOffsetMs = 0;
     const valid = () => !this.closed && !this.paused && !controller.signal.aborted && this.epoch === stream.epoch && !stream.cancelled && this.generation === controller && this.currentStream === stream;
     this.state('speaking'); this.emit({ type: 'audio.start', streamId: stream.id, turnId, messageId, beatId, visualReady, sampleRate: 24000 });
     try {
@@ -526,6 +537,11 @@ class VoiceConnection {
           }
           this.drain(stream);
         },
+        onBoundaries: timing => {
+          if (!valid()) return;
+          const words = timing.words.filter(word => word.endMs > word.startMs).map(word => ({ text: word.word.slice(0, 200), startMs: segmentOffsetMs + word.startMs - timing.audioStartMs, endMs: segmentOffsetMs + word.endMs - timing.audioStartMs }));
+          if (words.length) this.emit({ type: 'audio.words', streamId: stream.id, words });
+        },
         onError: () => { /* speak rejects; its catch performs one atomic cancellation and failure transition. */ }
       });
       if (!valid()) { await synth.close(); return; }
@@ -542,6 +558,7 @@ class VoiceConnection {
         const segment = segments[index]!, units = [...segment].length, beforeSamples = stream.sentSamples + stream.pendingSamples;
         const usage = await this.options.usage?.begin(this.ticket.principal, 'speech', units, { sessionId: this.ticket.sessionId, traceId: this.connectionId });
         if (!valid()) { await usage?.finish(true, 0); break; }
+        segmentOffsetMs = beforeSamples / 24;
         try { await synth.speak(segment, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]), onDone: () => {
           if (valid() && index === segments.length - 1) { stream.providerDone = true; this.drain(stream); }
         } }); await usage?.finish(true, units, { audioMs: Math.max(0, stream.sentSamples + stream.pendingSamples - beforeSamples) / 24 }); }

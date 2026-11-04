@@ -6,6 +6,24 @@ test.use({ trace: 'off' });
 test('production CSP permits native guest claim and private source transfers', async ({ page }, info) => {
   test.skip(process.env.TOKAI_E2E_PRODUCTION !== '1' || process.env.TOKAI_E2E_NATIVE !== '1', 'Explicit local production/native integration opt-in is required.');
   test.setTimeout(150000); // One real CPU source-ingestion job; no paid provider request.
+  const appOrigin = new URL(String(info.project.use.baseURL)).origin;
+  const apiOrigin = process.env.TOKAI_E2E_REMOTE_URL ? appOrigin : 'http://localhost:4000';
+  if (process.env.TOKAI_E2E_REMOTE_URL) {
+    const remote = new URL(process.env.TOKAI_E2E_REMOTE_URL);
+    if (remote.protocol !== 'https:' || remote.origin !== appOrigin) throw new Error('The preview integration requires its explicit HTTPS origin.');
+    const configuredSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    const environment = configuredSecret ? '' : await readFile('.tokai/cloud/automation.env', 'utf8');
+    const secret = configuredSecret ?? environment.match(/^VERCEL_AUTOMATION_BYPASS_SECRET=(.+)$/m)?.[1]?.trim().replace(/^(["'])(.*)\1$/, '$2');
+    if (!secret || secret.length < 20 || /[\r\n]/.test(secret)) throw new Error('The protected preview bypass credential is unavailable.');
+    await page.route(`${remote.origin}/**`, async route => {
+      try {
+        // Fulfill redirects without following them, so an external redirect can
+        // never inherit this origin-scoped credential. No context-wide header.
+        const response = await route.fetch({ headers: { ...route.request().headers(), 'x-vercel-protection-bypass': secret }, maxRedirects: 0 });
+        await route.fulfill({ response });
+      } catch { await route.abort('failed').catch(() => undefined); }
+    });
+  }
   await page.addInitScript(() => {
     const failures: { directive: string; origin: string; source?: string; line?: number }[] = [];
     Object.assign(window, { __tokaiCspFailures: failures });
@@ -18,12 +36,14 @@ test('production CSP permits native guest claim and private source transfers', a
     });
   });
   const violations: { directive: string; origin: string }[] = [], uploads: string[] = [], downloads: string[] = [];
+  let externalBypassHeader = false;
   const transferStatuses: { method: string; path: string; status: number }[] = [], sourceStates = new Set<string>();
   async function capturePolicyFailures() { violations.push(...await page.evaluate(() => (window as typeof window & { __tokaiCspFailures: { directive: string; origin: string }[] }).__tokaiCspFailures.splice(0))); }
   page.on('request', request => {
     const url = new URL(request.url());
-    if (request.method() === 'PUT' && !['http://localhost:3000', 'http://localhost:4000'].includes(url.origin)) uploads.push(url.origin);
-    if (request.method() === 'GET' && url.pathname === '/private-transfer' && !['http://localhost:3000', 'http://localhost:4000'].includes(url.origin)) downloads.push(url.origin);
+    if (url.origin !== appOrigin && request.headers()['x-vercel-protection-bypass']) externalBypassHeader = true;
+    if (request.method() === 'PUT' && ![appOrigin, apiOrigin].includes(url.origin)) uploads.push(url.origin);
+    if (request.method() === 'GET' && url.pathname === '/private-transfer' && ![appOrigin, apiOrigin].includes(url.origin)) downloads.push(url.origin);
   });
   page.on('response', async response => {
     const url = new URL(response.url());
@@ -42,14 +62,14 @@ test('production CSP permits native guest claim and private source transfers', a
     expect(csp).toContain("default-src 'self'"); expect(csp).toContain("object-src 'none'"); expect(csp).not.toContain("'unsafe-eval'");
     await page.getByRole('button', { name: 'Guided sample', exact: true }).click();
     await page.getByRole('button', { name: 'Start my lesson', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Let’s see the bigger picture.', exact: true })).toBeVisible();
+    await expect(page.getByRole('progressbar', { name: 'Lesson progress', exact: true })).toBeVisible();
     const lessonId = page.url().split('/').at(-1)!;
     await capturePolicyFailures(); await page.goto('/sign-in');
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await page.getByRole('textbox', { name: 'Your name', exact: true }).fill('CSP integration test');
     await page.getByRole('textbox', { name: 'Email address', exact: true }).fill(email);
     await page.getByLabel(/^Password/).fill(password);
-    const bridge = page.waitForResponse(response => response.url().endsWith('/auth/native-session') && response.request().method() === 'POST');
+    const bridge = page.waitForResponse(response => response.url().endsWith('/auth/native-session') && response.request().method() === 'POST', { timeout: 30000 });
     await page.getByRole('button', { name: 'Create my account', exact: true }).click();
     expect((await bridge).status()).toBe(200); createdAccount = true;
     await expect(page).toHaveURL(/\/dashboard$/);
@@ -76,6 +96,7 @@ test('production CSP permits native guest claim and private source transfers', a
     expect(path).toBeTruthy(); expect(await readFile(path!, 'utf8')).toBe(body);
     await capturePolicyFailures();
     expect(uploads.length).toBeGreaterThan(0); expect(downloads.length).toBeGreaterThan(0);
+    expect(externalBypassHeader).toBe(false);
     expect(violations).toEqual([]);
     await info.attach('production-csp-summary', { body: JSON.stringify({ enforcingCsp: true, nativeGuestClaim: true, directUploadOrigins: [...new Set(uploads)], directDownloadOrigins: [...new Set(downloads)], cspViolations: violations }, null, 2), contentType: 'application/json' });
   } catch (error) {

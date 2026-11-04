@@ -1,10 +1,10 @@
+import { NativeSessionRequestSchema } from '@tokai/contracts';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { LearnerPreferencesSchema, IdentitySchema } from '@tokai/contracts';
 import { ConvexNativeIdentity, StoreError, type Store, type Principal, type NativeIdentityProvider } from '@tokai/db';
-import { z } from 'zod';
-import { preferences } from './product-context.js';
+import { preferences, parse } from './product-context.js';
 const sessionCookie = 'tokai_session', loginCookie = 'tokai_login';
 const cookieRequests = new WeakSet<FastifyRequest>();
 export const usesAccountCookie = (request: FastifyRequest) => cookieRequests.has(request);
@@ -64,7 +64,7 @@ export async function registerIdentity(app: FastifyInstance, options: IdentityOp
   app.get('/auth/config', async () => ({ native: Boolean(native), oidc: available, passwordRecovery: false, emailVerification: false }));
   app.post('/auth/native-session', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     requireOrigin(request); if (!native) throw new StoreError(503, 'NATIVE_AUTH_UNAVAILABLE', 'Account sign-in is not configured.');
-    const { token } = z.object({ token: z.string().min(20).max(20000) }).strict().parse(request.body);
+    const { token } = parse(NativeSessionRequestSchema, request.body);
     const identity = await native.verify(token);
     const original = request.headers.authorization ? await requestPrincipal(request, store) : undefined;
     const user = await store.createUser({ issuer: 'urn:tokai:native-auth', subject: identity.subject, displayName: identity.displayName });

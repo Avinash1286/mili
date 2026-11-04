@@ -3,6 +3,7 @@ export const restoreProbeFunctions = String.raw`
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { makeFunctionReference } from 'convex/server';
 import { v } from 'convex/values';
+import { updateStorageInventory } from './usage';
 export const addFile = internalAction({ args: {}, handler: async ctx => {
   const text = 'Tokai isolated restore verification.\n'.repeat(1024);
   const storageId = await ctx.storage.store(new Blob([text], { type: 'text/plain' }));
@@ -69,6 +70,8 @@ export const seedRetention = internalMutation({ args: {}, handler: async ctx => 
   const now = Date.now(), ownerId = 'restore-retention-owner', sessionId = 'restore-retention-session', at = new Date(now - 3 * 86400000).toISOString();
   await ctx.db.insert('owners', { id: ownerId, kind: 'user', revision: 0, eventSequence: 0 });
   await ctx.db.insert('owners', { id: 'restore-expired-guest', kind: 'guest', revision: 0, eventSequence: 0, expiresAt: now - 1 });
+  await ctx.db.insert('usageStorage', { ownerId: 'restore-expired-guest', bytes: 0, objects: 0, updatedAt: now });
+  if (!await ctx.db.query('usageStorage').withIndex('by_owner', q => q.eq('ownerId', 'global')).unique()) await ctx.db.insert('usageStorage', { ownerId: 'global', bytes: 0, objects: 0, updatedAt: now });
   await ctx.db.insert('sessions', { id: sessionId, ownerId, revision: 0, updatedAt: at, snapshot: { messages: [{ text: 'Private isolated retention fixture' }], settings: { preferences: { retentionDays: 1 } } } });
   await ctx.db.insert('resources', { id: 'restore-retention-note', ownerId, sessionId, kind: 'note', revision: 0, createdAt: at, updatedAt: at, data: { text: 'Private isolated fixture note' } });
   await ctx.db.insert('authSessions', { id: 'restore-expired-auth', ownerId, tokenHash: 'isolated-fixture-hash', expiresAt: now - 1 });
@@ -78,6 +81,22 @@ export const seedRetention = internalMutation({ args: {}, handler: async ctx => 
   await ctx.db.insert('usageDays', { scope: 'owner:' + ownerId, day, kind: 'model', totals });
   return null;
 } });
+export const seedRetentionFiles = internalAction({ args: {}, handler: async ctx => {
+  const bytes = new TextEncoder().encode('retention fixture');
+  const expired = await ctx.storage.store(new Blob([bytes], { type: 'text/plain' }));
+  const active = await ctx.storage.store(new Blob([bytes], { type: 'text/plain' }));
+  await ctx.runMutation(makeFunctionReference('restoreProbe:saveRetentionFiles'), { expired, active, size: bytes.length });
+} });
+export const saveRetentionFiles = internalMutation({ args: { expired: v.id('_storage'), active: v.id('_storage'), size: v.number() }, handler: async (ctx, args) => {
+  const ownerId = 'restore-retention-owner', now = Date.now(), at = new Date(now).toISOString();
+  for (const label of ['expired', 'active'] as const) {
+    const id = 'restore-' + label + '-file', expiresAt = label === 'expired' ? now - 1 : now + 86400000;
+    await ctx.db.insert('resources', { id, ownerId, kind: 'source', revision: 0, createdAt: at, updatedAt: at, data: { status: 'ready', fileExpiresAt: new Date(expiresAt).toISOString() } });
+    await ctx.db.insert('files', { key: 'source/' + id, storageId: args[label], size: args.size, contentType: 'text/plain', ownerId, expiresAt });
+  }
+  await ctx.db.insert('chunks', { id: 'restore-expired-file-chunk', ownerId, sourceId: 'restore-expired-file', scope: ownerId + ':restore-expired-file', revision: 0, ordinal: 0, text: 'Still consented indexed text' });
+  await updateStorageInventory(ctx, ownerId, args.size * 2, 2);
+} });
 export const retentionState = internalQuery({ args: {}, handler: async ctx => {
   const guest = await ctx.db.query('owners').withIndex('by_external_id', q => q.eq('id', 'restore-expired-guest')).unique();
   const session = await ctx.db.query('sessions').withIndex('by_external_id', q => q.eq('id', 'restore-retention-session')).unique();
@@ -86,10 +105,17 @@ export const retentionState = internalQuery({ args: {}, handler: async ctx => {
   const events = await ctx.db.query('events').withIndex('by_event', q => q.eq('ownerId', 'restore-retention-owner').eq('sessionId', 'restore-retention-session')).collect();
   const sessionUsage = await ctx.db.query('usageDays').withIndex('by_scope_day_kind', q => q.eq('scope', 'session:restore-retention-owner/restore-retention-session')).first();
   const ownerUsage = await ctx.db.query('usageDays').withIndex('by_scope_day_kind', q => q.eq('scope', 'owner:restore-retention-owner')).first();
-  return { expiredGuestRevoked: guest?.deletedAt !== undefined, retainedSessionCleared: session?.deletedAt !== undefined && Object.keys(session.snapshot).length === 0, childResourceCleared: note?.deletedAt !== undefined && Object.keys(note.data).length === 0, expiredCredentialRemoved: auth === null, childEventsRemoved: events.length === 0, privateSessionUsageRemoved: sessionUsage === null, aggregateOwnerUsagePreserved: ownerUsage?.totals.units === 1 };
+  const expiredInventory = await ctx.db.query('usageStorage').withIndex('by_owner', q => q.eq('ownerId', 'restore-expired-guest')).unique();
+  const globalInventory = await ctx.db.query('usageStorage').withIndex('by_owner', q => q.eq('ownerId', 'global')).unique();
+  const activeFile = await ctx.db.query('files').withIndex('by_key', q => q.eq('key', 'source/restore-active-file')).unique();
+  const expiredFile = await ctx.db.query('files').withIndex('by_key', q => q.eq('key', 'source/restore-expired-file')).unique();
+  const ownerInventory = await ctx.db.query('usageStorage').withIndex('by_owner', q => q.eq('ownerId', 'restore-retention-owner')).unique();
+  const retainedChunk = await ctx.db.query('chunks').withIndex('by_source', q => q.eq('ownerId', 'restore-retention-owner').eq('sourceId', 'restore-expired-file')).first();
+  return { expiredGuestRevoked: guest?.deletedAt !== undefined, retainedSessionCleared: session?.deletedAt !== undefined && Object.keys(session.snapshot).length === 0, childResourceCleared: note?.deletedAt !== undefined && Object.keys(note.data).length === 0, expiredCredentialRemoved: auth === null, childEventsRemoved: events.length === 0, privateSessionUsageRemoved: sessionUsage === null, aggregateOwnerUsagePreserved: ownerUsage?.totals.units === 1, deletedOwnerInventoryRemoved: expiredInventory === null, globalInventoryPreserved: globalInventory !== null, expiredRawFileRemoved: expiredFile === null, activeRawFilePreserved: activeFile !== null, inventoryTracksRemainingFile: ownerInventory?.objects === 1 && ownerInventory?.bytes === activeFile?.size, consentedIndexedTextPreserved: retainedChunk !== null };
 } });
 export const verifyRetention = internalAction({ args: {}, handler: async ctx => {
   await ctx.runMutation(makeFunctionReference('restoreProbe:seedRetention'), {});
+  await ctx.runAction(makeFunctionReference('restoreProbe:seedRetentionFiles'), {});
   await ctx.runMutation(makeFunctionReference('maintenance:sweep'), {});
   for (let i = 0; i < 200; i++) {
     const state: any = await ctx.runQuery(makeFunctionReference('restoreProbe:retentionState'), {});

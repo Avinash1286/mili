@@ -9,7 +9,7 @@ import { createLesson } from '@tokai/tutor-core';
 import { buildStudyPack, getLessonPack } from '@tokai/learning';
 import { PDFDocument } from 'pdf-lib';
 import { parseSource } from '../../../packages/grounding/src/parse';
-import { runArtifact, synthesizeRecap, captionWords } from '../src/artifact-jobs';
+import { runArtifact, synthesizeRecap, synthesizeDialogue, captionWords } from '../src/artifact-jobs';
 import { pcmToWav, renderStudyPackPdf } from '../src/artifact-export';
 import type { ProductContext } from '../src/product-context';
 import type { ArtifactFile } from '../src/artifact-routes';
@@ -119,6 +119,15 @@ describe('durable artifact jobs', () => {
     const pointer = await store.resources.get<ArtifactFile>(principal, 'artifact-file', artifact.id), audio = (await objects.get(pointer.data.storageKey)).body;
     expect(audio.toString('ascii', 0, 4)).toBe('RIFF'); expect(audio.readUInt32LE(24)).toBe(24000); expect(audio.readUInt32LE(40)).toBe(4800);
     expect((await store.resources.get<StudyPack>(principal, 'study-pack', session.id)).data.recap.status).toBe('ready');
+  });
+  it('speaks a two-voice dialogue recap with speaker-marked, offset captions', async () => {
+    session = { ...session, settings: SessionSettingsSchema.parse({ preferences: LearnerPreferencesSchema.parse({ retainRecapAudio: true, voiceId: 'aai-sara' }), goal: '', sourceIds: [], grounding: 'general' }) };
+    context.env.ASSEMBLYAI_API_KEY = 'offline-key';
+    context.providers!.recap = vi.fn(async input => ({ async speak(text: string) { input.onAudio(new Uint8Array(4800), { providerSessionId: 'p', flushId: 0 }); input.onBoundaries?.({ providerSessionId: 'p', flushId: 0, audioStartMs: 0, words: [{ word: text.split(' ')[0]!, startMs: 0, endMs: 50, confidence: 1 }] }); }, cancel: async () => {}, close: () => {} }));
+    const result = await synthesizeDialogue(context, session, { lines: [{ speaker: 'milli', text: 'Light powers sugar building.' }, { speaker: 'sam', text: 'So leaves store energy?' }] }, new AbortController().signal);
+    expect(vi.mocked(context.providers!.recap).mock.calls.map(call => call[0].voiceId)).toEqual(['aai-sara', 'aai-audrey']);
+    expect(result.captions).toEqual([{ text: 'milli:', startMs: 0, endMs: 0 }, { text: 'Light', startMs: 0, endMs: 50 }, { text: 'Sam:', startMs: 380, endMs: 380 }, { text: 'So', startMs: 380, endMs: 430 }]);
+    expect(result.durationMs).toBe(760);
   });
   it('rejects missing or unordered timing data and malformed PCM rather than fabricating captions', () => {
     const identity = { providerSessionId: 'provider', flushId: 0, audioStartMs: 0 };

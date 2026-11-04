@@ -56,3 +56,33 @@ it('does not label a known provider-free fallback as an unpriced provider reques
   const cancelledSpeech = await usage.begin(p, 'speech', 20); await cancelledSpeech.finish(true, 0);
   expect((await usage.summary(p)).kinds.find(kind => kind.kind === 'speech')!.totals.pricedRequests).toBeUndefined();
 });
+it('admits conservative USD commitments atomically across owners, settles actual measurements once and retains unknown failures', async () => {
+  const rates = { effectiveDate: '2026-11-04', models: { fixture: { inputPerMillion: 2, outputPerMillion: 8 } }, speechPerMillionCharacters: 10000 };
+  const config = { GEMINI_MODEL: 'fixture', TOKAI_OWNER_DAILY_USD: '0.10', TOKAI_GLOBAL_DAILY_USD: '0.05', TOKAI_USAGE_RATES_JSON: JSON.stringify(rates) };
+  const lookup = async () => ({ model: 'fixture', inputTokenLimit: 10000, outputTokenLimit: 1000, verifiedAt: time });
+  const a = new UsageMeter(store, config, () => time, lookup), b = new UsageMeter(store, config, () => time, lookup);
+  const first = await a.begin(p, 'model', 1);
+  await expect(b.begin(q, 'model', 1)).rejects.toMatchObject({ code: 'DAILY_USD_LIMIT' });
+  expect((await b.summary(p)).budget).toMatchObject({ ownerUsedUsd: .028, globalUsedUsd: .028, globalRemainingUsd: .022 });
+  await first.finish(true, 1, { inputTokens: 1000, outputTokens: 100, totalTokens: 1100, estimatedUsd: .0028, pricedRequests: 1 });
+  await first.finish(true, 0, { estimatedUsd: 0 });
+  expect((await a.summary(p)).budget?.globalUsedUsd).toBe(.0028);
+  const second = await b.begin(q, 'model', 1); await second.finish(false);
+  expect((await a.summary(q)).budget?.globalUsedUsd).toBe(.0308);
+  await expect(a.begin(other, 'speech', 2)).rejects.toMatchObject({ code: 'DAILY_USD_LIMIT' });
+});
+it('fails closed before generation when a configured dollar cap has no trusted bound', async () => {
+  let work = 0, lookups = 0;
+  const usage = new UsageMeter(store, { GEMINI_MODEL: 'fixture', TOKAI_OWNER_DAILY_USD: '1' }, () => time, async () => { lookups++; return { model: 'fixture', inputTokenLimit: 1000, outputTokenLimit: 10, verifiedAt: time }; });
+  await expect(usage.run(p, 'model', 1, async () => { work++; })).rejects.toMatchObject({ code: 'USD_BOUND_UNAVAILABLE' });
+  expect(work).toBe(0); expect(lookups).toBe(1); expect((await usage.summary(p)).kinds[0]!.used).toBe(0);
+  const storage = new UsageMeter(store, { TOKAI_OWNER_DAILY_USD: '1', TOKAI_USAGE_RATES_JSON: JSON.stringify({ effectiveDate: '2026-11-04', storagePerGiBDay: .1 }) }, () => time);
+  await expect(storage.begin(p, 'storage', 1000)).rejects.toMatchObject({ code: 'USD_BOUND_UNAVAILABLE' });
+});
+it('does not hide earlier unbounded work when rates are configured later in the same UTC day', async () => {
+  const unpriced = new UsageMeter(store, {}, () => time), old = await unpriced.begin(p, 'speech', 1); await old.finish(true, 1);
+  const pricedEnv = { TOKAI_USAGE_RATES_JSON: JSON.stringify({ effectiveDate: '2026-11-04', speechPerMillionCharacters: 1 }) };
+  const priced = new UsageMeter(store, pricedEnv, () => time), later = await priced.begin(p, 'speech', 1); await later.finish(true, 1);
+  const capped = new UsageMeter(store, { ...pricedEnv, TOKAI_OWNER_DAILY_USD: '1' }, () => time);
+  await expect(capped.begin(p, 'speech', 1)).rejects.toMatchObject({ code: 'USD_HISTORY_CONFIGURATION' });
+});

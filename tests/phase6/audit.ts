@@ -18,6 +18,6 @@ export async function sampleLesson(page: Page) {
   await page.getByRole('combobox', { name: 'Sample topic', exact: true }).selectOption('fractions');
   await page.getByRole('button', { name: 'Start my lesson', exact: true }).click();
   await expect(page).toHaveURL(/\/learn\/[a-f0-9-]{36}$/);
-  await expect(page.getByRole('heading', { name: 'Let’s see the bigger picture.', exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Lesson progress', exact: true })).toBeVisible();
   return page.url().split('/').at(-1)!;
 }

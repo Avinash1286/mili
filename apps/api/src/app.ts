@@ -4,8 +4,8 @@ import rateLimit from '@fastify/rate-limit';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CreateSessionSchema, SendMessageSchema, UpdateBoardSchema, SpeechRequestSchema, BoardTransactionSchema, MapUpdateSchema, ExplainImageSchema, applyMapUpdate, emptyConceptMap, type Session, type SelectionContext, type BoardCommand, type PracticeResponse } from '@tokai/contracts';
-import { createLesson, sampleTeachingReply, summarizeSession, generateTutorReply, generateVisionExplanation, validateVisionImage, groundSpatialSelection, VisionError, TutorError, type GenerateReply, type TutorReply } from '@tokai/tutor-core';
+import { CreateSessionSchema, SendMessageSchema, UpdateBoardSchema, SpeechRequestSchema, BoardTransactionSchema, MapUpdateSchema, ExplainImageSchema, TutorVoiceSchema, TUTOR_VOICES, applyMapUpdate, emptyConceptMap, type Session, type SelectionContext, type BoardCommand, type PracticeResponse, type SpeechLanguage } from '@tokai/contracts';
+import { createLesson, sampleTeachingReply, summarizeSession, generateTutorReply, fastProvidersFromEnv, generateVisionExplanation, validateVisionImage, groundSpatialSelection, VisionError, TutorError, type GenerateReply, type TutorReply } from '@tokai/tutor-core';
 import { synthesizeSpeech } from '@tokai/speech';
 import { ApiError, FileStore } from './store.js';
 import { ConvexStore, NativeObjectStore, FileObjectStore, type Store, type ObjectStore, type Principal } from '@tokai/db';
@@ -30,6 +30,8 @@ import { planTeachingBeats, appendTeachingBeats, commitBeatVisuals } from './tea
 
 export type AppOptions = {
   dataDir?: string; now?: () => number; origin?: string;
+  /** Build-time contract inventory; never receives request data or credentials. */
+  routeObserver?: (route: { method: string | string[]; url: string; bodyLimit?: number }) => void;
   env?: Record<string, string | undefined>;
   tutor?: GenerateReply;
   speech?: typeof synthesizeSpeech;
@@ -51,10 +53,12 @@ export async function createApp(options: AppOptions = {}) {
   const objects = options.objects ?? (useConvex ? NativeObjectStore.fromEnv(env) : new FileObjectStore(path.join(dataDir, 'objects')));
   await store.initialize();
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024, requestTimeout: 35000, trustProxy: false });
+  if (options.routeObserver) app.addHook('onRoute', route => options.routeObserver!(route));
   registerRequestLifecycle(app);
   await app.register(cors, { origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000', credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] });
   if (options.rateLimit !== false) await app.register(rateLimit, { max: 100, timeWindow: '1 minute', keyGenerator: request => clientAddress(request, env.VERCEL === '1') });
-  const providers = () => ({ tutor: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL), speech: Boolean(env.ASSEMBLYAI_API_KEY), voice: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL && env.ASSEMBLYAI_API_KEY) });
+  const tutorConfigured = () => Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL) || fastProvidersFromEnv(env).length > 0;
+  const providers = () => ({ tutor: tutorConfigured(), speech: Boolean(env.ASSEMBLYAI_API_KEY), voice: tutorConfigured() && Boolean(env.ASSEMBLYAI_API_KEY) });
   const usage = new UsageMeter(store, env, clock);
   const httpTurns = new Map<string, AbortController>();
   const voice = new VoiceManager({ store, env, usage, now: clock, tutor: options.tutor ?? generateTutorReply, tutorWithPrincipal: (input, p) => live(input.session, input.text, input.selectedNodeId, input.selection, input.signal, p, input.turnId ? { id: input.turnId, practiceResponse: input.practiceResponse, mode: input.inputMode ?? 'typed' } : undefined), voice: options.voice, origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000', httpBusy: id => httpTurns.has(id) });
@@ -81,14 +85,14 @@ export async function createApp(options: AppOptions = {}) {
       if (session.settings?.grounding === 'sources-only' && !session.citations?.length) return { text: 'I could not find supporting material in the selected sources. Ask about a more specific passage, or add a source that covers this question.' };
       // The model sees only this turn's retrieval. Preserve prior references afterwards for saved learning material.
       modelCalls = 1;
-      const result = await (options.tutor ?? generateTutorReply)({ session, text, selectedNodeId, selection, signal, learning: learning?.learning, onUsage: observe, limits: { requestTimeoutMs: 45000 }, apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL! });
+      const result = await (options.tutor ?? generateTutorReply)({ session, text, selectedNodeId, selection, signal, learning: learning?.learning, onUsage: observe, limits: { requestTimeoutMs: 45000 }, apiKey: env.GEMINI_API_KEY ?? '', model: env.GEMINI_MODEL ?? '', fastProviders: fastProvidersFromEnv(env) });
       modelCalls = result.diagnostics?.modelCalls ?? modelCalls; return result;
     } finally {
       const citations = new Map(previousCitations.map(citation => [citation.id, citation]));
       for (const citation of session.citations ?? []) { citations.delete(citation.id); citations.set(citation.id, citation); }
       session.citations = [...citations.values()].slice(-80);
     }
-    }, { sessionId: turn ? session.id : undefined, traceId: turn?.id ?? session.id, usedUnits: () => modelCalls });
+    }, { sessionId: turn ? session.id : undefined, traceId: turn?.id ?? session.id, signal, usedUnits: () => modelCalls });
     return learning ? learning.finalize(generated) : generated;
   }
   function applyTextReply(session: Session, result: TutorReply, turnId: string) {
@@ -97,13 +101,14 @@ export async function createApp(options: AppOptions = {}) {
     for (const beat of beats) commitBeatVisuals(session, beat.beatId);
   }
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof LearningError) return reply.status(/CONFLICT|SUBMITTED|INACTIVE/.test(error.code) ? 409 : 400).send({ code: error.code, message: error.message, requestId: request.id });
-    if (error instanceof ApiError || error instanceof TutorError || error instanceof LearningProviderError) return reply.status(error.status).send({ code: error.code, message: error.message, requestId: request.id });
-    if (error instanceof VisionError) return reply.status(error.code.startsWith('INVALID') || error.code === 'IMAGE_TOO_LARGE' ? 400 : 503).send({ code: error.code, message: error.message, requestId: request.id });
+    const sendError = (status: number, code: string, message: string) => reply.status(status).send({ code, message, requestId: request.id, retryable: [429, 502, 503, 504].includes(status) && !/DAILY_|SESSION_LIMIT|SOURCE_LIMIT|TURN_LIMIT|PRACTICE_LIMIT|SHARE_LIMIT|CONFIGURATION|UNAVAILABLE/.test(code) });
+    if (error instanceof LearningError) return sendError(/CONFLICT|SUBMITTED|INACTIVE/.test(error.code) ? 409 : 400, error.code, error.message);
+    if (error instanceof ApiError || error instanceof TutorError || error instanceof LearningProviderError) return sendError(error.status, error.code, error.message);
+    if (error instanceof VisionError) return sendError(error.code.startsWith('INVALID') || error.code === 'IMAGE_TOO_LARGE' ? 400 : 503, error.code, error.message);
     const status = error && typeof error === 'object' && 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined;
-    if (status === 429) return reply.status(429).send({ code: 'RATE_LIMITED', message: 'Too many requests. Please wait a moment and try again.', requestId: request.id });
-    if (status && status >= 400 && status < 500) return reply.status(status).send({ code: 'INVALID_REQUEST', message: 'The request could not be accepted.', requestId: request.id });
-    return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'The server could not complete the request. Your saved lesson is unchanged.', requestId: request.id });
+    if (status === 429) return sendError(429, 'RATE_LIMITED', 'Too many requests. Please wait a moment and try again.');
+    if (status && status >= 400 && status < 500) return sendError(status, 'INVALID_REQUEST', 'The request could not be accepted.');
+    return sendError(500, 'INTERNAL_ERROR', 'The server could not complete the request. Reload the lesson before retrying.');
   });
   await registerIdentity(app, { ...options.identity, store, env, now: clock, closeOwner: async ownerId => { await voice.closeOwner(ownerId); for (const session of await store.list(await store.principalForOwner(ownerId)).catch(() => [])) await product.closeSession(session.id); } });
   registerUsage(app, store, usage);
@@ -209,14 +214,14 @@ export async function createApp(options: AppOptions = {}) {
     const controller = new AbortController();
     const context = await store.locked(request.params.id, async () => {
       const session = await store.get(principal, request.params.id); ensureActive(session); await voice.assertHttpAvailable(session.id, principal);
-      if (session.mode !== 'live' || !providers().tutor) throw new ApiError(503, 'VISION_UNAVAILABLE', 'Board-image explanations require a configured live AI lesson.');
+      if (session.mode !== 'live' || !env.GEMINI_API_KEY || !env.GEMINI_MODEL) throw new ApiError(503, 'VISION_UNAVAILABLE', 'Board-image explanations require a configured live AI lesson.');
       if (session.messages.length > 198 || (session.teachingBeats?.length ?? 0) > 198) throw new ApiError(429, 'TURN_LIMIT', 'Finish this lesson before asking another image question.');
       if (httpTurns.has(session.id)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current tutor response.');
       httpTurns.set(session.id, controller); return session;
     });
     try {
       const signal = AbortSignal.any([controller.signal, requestSignal(request)]);
-      const result = await usage.run(principal, 'model', 1, observe => (options.vision ?? generateVisionExplanation)({ ...input, session: context, apiKey: env.GEMINI_API_KEY!, model: env.VISION_MODEL ?? env.GEMINI_MODEL!, signal, onUsage: observe }), { sessionId: context.id });
+      const result = await usage.run(principal, 'model', 1, observe => (options.vision ?? generateVisionExplanation)({ ...input, session: context, apiKey: env.GEMINI_API_KEY!, model: env.VISION_MODEL ?? env.GEMINI_MODEL!, signal, onUsage: observe }), { sessionId: context.id, model: env.VISION_MODEL ?? env.GEMINI_MODEL!, signal });
       return await store.locked(request.params.id, async () => {
         const session = await store.get(principal, request.params.id); ensureActive(session);
         await voice.assertHttpAvailable(session.id, principal);
@@ -289,5 +294,26 @@ export async function createApp(options: AppOptions = {}) {
       }
     }
   });
+  app.post<{ Params: { voiceId: string } }>('/v1/voices/:voiceId/preview', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const principal = await authenticate(request.headers.authorization);
+    const voiceId = parse(TutorVoiceSchema, request.params.voiceId), voice = TUTOR_VOICES.find(item => item.id === voiceId)!;
+    if (!env.ASSEMBLYAI_API_KEY) throw new ApiError(503, 'SPEECH_UNAVAILABLE', 'AssemblyAI speech is not configured on the server.');
+    const text = VOICE_PREVIEW_TEXT[voice.language];
+    try {
+      const result = await usage.run(principal, 'speech', [...text].length, () => (options.speech ?? synthesizeSpeech)({ text, apiKey: env.ASSEMBLYAI_API_KEY!, voiceId, language: voice.language, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(20000)]) }));
+      return reply.type(result.contentType).header('Cache-Control', 'no-store').send(result.audio);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(503, 'SPEECH_FAILED', 'Voice preview is temporarily unavailable.');
+    }
+  });
   return app;
 }
+const VOICE_PREVIEW_TEXT: Record<SpeechLanguage, string> = {
+  english: 'Hi, I’m milli. Ask me anything, and we’ll figure it out together.',
+  spanish: 'Hola, soy milli. Pregúntame lo que quieras y lo resolvemos juntos.',
+  german: 'Hallo, ich bin milli. Frag mich alles, und wir finden es gemeinsam heraus.',
+  french: 'Bonjour, je suis milli. Pose-moi une question, et on trouvera ensemble.',
+  italian: 'Ciao, sono milli. Chiedimi qualsiasi cosa e lo scopriremo insieme.',
+  portuguese: 'Olá, eu sou a milli. Pergunte o que quiser e vamos descobrir juntos.',
+};

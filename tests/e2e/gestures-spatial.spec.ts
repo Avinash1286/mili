@@ -4,6 +4,9 @@ import { fixtureCamera } from '../fixtures/camera.js';
 import { SPATIAL_REQUEST, SPATIAL_SEQUENCE_REQUEST } from '../fixtures/spatial.js';
 import { VISUAL_REQUEST } from '../fixtures/teaching.js';
 
+// Camera gestures are an opt-in experiment in Settings.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorage.setItem('milli.gestures', '1')); });
+
 async function ask(page: Page, text: string) {
   await page.getByRole('textbox', { name: /question/i }).fill(text);
   await page.getByRole('button', { name: 'Send question', exact: true }).click();
@@ -129,7 +132,7 @@ test('a local tracking asset failure stops the camera and leaves selection help 
   expect((await camera.state()).liveTracks).toBe(0);
   await expect(page.getByRole('status').filter({ hasText: /could not|failed|stopped/i })).toBeVisible();
   await page.locator('.board-node[data-node-id="chloroplast"]').click();
-  await page.getByText('Gesture settings and camera preview', { exact: true }).click();
+  await page.getByText('Gesture settings', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Ask about selection', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Ask about selection', exact: true }).click();
   await expect(page.getByRole('textbox', { name: /question/i })).not.toHaveValue('');

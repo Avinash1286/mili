@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { priceUsage, usageRates } from '../src/usage-pricing.js';
+import { priceUsage, usageRates, priceUpperBound, budgetPolicy } from '../src/usage-pricing.js';
 import { emptyUsage, sumObservation } from '@tokai/contracts';
 
 // Deliberately synthetic rates; these are arithmetic fixtures, not provider prices.
@@ -31,4 +31,17 @@ it('leaves contradictory provider counts unpriced and rejects impossible effecti
     { inputTokens: 10, outputTokens: 4, totalTokens: 14, cachedInputTokens: -1 },
   ]) expect(priceUsage(rates, 'model', value, 1, true, 'fixture')).toEqual({ unpricedRequests: 1 });
   expect(() => usageRates(JSON.stringify({ effectiveDate: '2026-02-31', models: {} }))).toThrow('dated USD');
+});
+it('bounds full verified model capability and rejects missing, mismatched or stale ceilings', () => {
+  const now = Date.now(), limit = { model: 'fixture', inputTokenLimit: 10000, outputTokenLimit: 1000, verifiedAt: now };
+  expect(priceUpperBound(rates, 'model', 3, { model: 'fixture', modelLimit: limit, now })).toBe(84000);
+  for (const modelLimit of [undefined, { ...limit, model: 'other' }, { ...limit, verifiedAt: now - 300001 }]) expect(priceUpperBound(rates, 'model', 1, { model: 'fixture', modelLimit, now })).toBeUndefined();
+  expect(budgetPolicy({ TOKAI_OWNER_DAILY_USD: '0.000001', TOKAI_GLOBAL_DAILY_USD: '2.15' })).toEqual({ ownerMicros: 1, globalMicros: 2150000 });
+  for (const amount of ['-1', '1e6', '0.0000001', 'NaN']) expect(() => budgetPolicy({ TOKAI_OWNER_DAILY_USD: amount })).toThrow();
+});
+it('bounds storage lifetime and prepared download bytes without claiming indefinite storage is free', () => {
+  const configured = usageRates(JSON.stringify({ effectiveDate: '2026-11-04', storagePerGiBDay: .2, egressPerGiB: .3 }))!;
+  expect(priceUpperBound(configured, 'storage', 1073741824, { now: 0, retentionDays: 10 })).toBe(2000000);
+  expect(priceUpperBound(configured, 'storage', 1073741824, { now: 0 })).toBeUndefined();
+  expect(priceUpperBound(configured, 'egress', 1073741824, { now: 0 })).toBe(300000);
 });

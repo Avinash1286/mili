@@ -1,3 +1,3 @@
 import Link from 'next/link';
-export function Mark({ small = false }: { small?: boolean }) { return <span className={`brand-mark ${small ? 'small' : ''}`} aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M16 5v22M5 16h22M8 8l16 16M8 24 24 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><circle cx="16" cy="16" r="5" fill="currentColor"/></svg></span>; }
-export function Brand() { return <Link className="brand" href="/" aria-label="Tokai home"><Mark /><span>tokai<span className="brand-period">.</span></span></Link>; }
+export function Mark({ small = false }: { small?: boolean }) { return <span className={`brand-mark ${small ? 'small' : ''}`} aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="15" fill="currentColor"/><path d="M10 13v6M14 9.5v13M18 11.5v9M22 14v4" stroke="#fff" strokeWidth="2.6" strokeLinecap="round"/></svg></span>; }
+export function Brand() { return <Link className="brand" href="/" aria-label="milli home"><Mark /><span>milli</span></Link>; }

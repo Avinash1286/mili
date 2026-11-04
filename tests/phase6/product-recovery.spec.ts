@@ -32,7 +32,7 @@ test('tutor practice reuses its saved presentation and keeps hints after reload'
   expect(transport.errors).toEqual([]);
 });
 
-test('retrying a lost HTTP response uses the same turn identity and changed input uses a new one', async ({ page }) => {
+test('retrying a lost HTTP response uses the same turn identity and changed input uses a new one', async ({ page }, info) => {
   const transport = await fixtureTransport(page);
   await openLiveLesson(page);
   const requests: { requestId: string; text: string }[] = [];
@@ -57,6 +57,7 @@ test('retrying a lost HTTP response uses the same turn identity and changed inpu
   await page.getByRole('button', { name: 'Send question', exact: true }).click();
   await expect(page.locator('.message-student')).toHaveCount(2);
   expect(requests[2]!.requestId).not.toBe(requests[1]!.requestId);
+  await audit(page, info, 'http-turn-delivery');
   expect(transport.errors).toEqual([]);
 });
 
@@ -64,6 +65,7 @@ test('usage errors do not block preferences and can be retried without fabricate
   const transport = await fixtureTransport(page); let unavailable = true;
   await page.route('http://localhost:4000/v1/me/usage', async route => unavailable ? route.fulfill({ status: 503, json: { message: 'Allowance unavailable.' } }) : route.fallback());
   await page.goto('/settings');
+  await page.getByText('Usage and limits', { exact: true }).click();
   await expect(page.getByText('We couldn’t refresh your allowance. Your preferences and saved learning remain available.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save preferences', exact: true })).toBeEnabled();
   await page.getByRole('textbox', { name: 'Display name', exact: true }).fill('A learner who can keep editing');

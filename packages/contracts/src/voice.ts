@@ -34,6 +34,8 @@ export const VoiceClientEventSchema = z.discriminatedUnion('type', [
 export type VoiceClientEvent = z.infer<typeof VoiceClientEventSchema>;
 
 const envelope = { protocolVersion: z.literal(1), connectionId: z.string(), sessionId: z.string(), seq: uint, outputEpoch: uint };
+export const VoiceCommandSchema = z.enum(['show-3d', 'hide-3d', 'open-concepts', 'open-practice', 'open-conversation', 'finish-lesson', 'repeat']);
+export type VoiceCommand = z.infer<typeof VoiceCommandSchema>;
 export const VoiceServerEventSchema = z.discriminatedUnion('type', [
   z.object({ ...envelope, type: z.literal('session.ready'), session: z.lazy(() => SessionSchema), inputSampleRate: z.literal(16000), outputSampleRate: z.literal(24000) }),
   z.object({ ...envelope, type: z.literal('session.snapshot'), session: z.lazy(() => SessionSchema) }),
@@ -41,11 +43,13 @@ export const VoiceServerEventSchema = z.discriminatedUnion('type', [
   z.object({ ...envelope, type: z.literal('input.ready'), streamId: uint }),
   z.object({ ...envelope, type: z.literal('transcript.partial'), turnId: z.string(), text: z.string().max(12000) }),
   z.object({ ...envelope, type: z.literal('transcript.final'), turnId: z.string(), text: z.string().max(12000) }),
+  z.object({ ...envelope, type: z.literal('ui.command'), turnId: z.string(), command: VoiceCommandSchema, text: z.string().max(2000) }),
   z.object({ ...envelope, type: z.literal('tutor.beat'), turnId: z.string(), messageId: z.string(), beatId: z.string().optional(), text: z.string().max(12000), spokenText: z.string().max(1200).optional(), conceptIds: z.array(z.string()).max(24).optional(), highlightNodeIds: z.array(z.string()).max(40).optional() }),
   z.object({ ...envelope, type: z.literal('board.patch'), beatId: z.string().optional(), operationId: z.string(), board: z.lazy(() => BoardSchema), map: z.lazy(() => ConceptMapSchema).optional(), spatialState: SpatialSelectionSchema.optional(), visualSurface: z.enum(['board', 'spatial']).optional() }),
   z.object({ ...envelope, type: z.literal('map.patch'), map: z.lazy(() => ConceptMapSchema) }),
   z.object({ ...envelope, type: z.literal('audio.start'), streamId: uint, turnId: z.string(), messageId: z.string(), beatId: z.string().optional(), visualReady: z.boolean().default(true), sampleRate: z.literal(24000) }),
   z.object({ ...envelope, type: z.literal('audio.end'), streamId: uint }),
+  z.object({ ...envelope, type: z.literal('audio.words'), streamId: uint, words: z.array(z.object({ text: z.string().max(200), startMs: z.number().nonnegative(), endMs: z.number().nonnegative() })).max(2000) }),
   z.object({ ...envelope, type: z.literal('audio.cancel'), reason: z.string().max(200) }),
   z.object({ ...envelope, type: z.literal('voice.metrics'), turnId: z.string(), llmMs: z.number().nonnegative(), firstAudioMs: z.number().nonnegative().optional(), inputAudioMs: z.number().nonnegative(), outputAudioMs: z.number().nonnegative() }),
   z.object({ ...envelope, type: z.literal('error'), code: z.string(), message: z.string().max(1000), recoverable: z.boolean(), operationId: z.string().optional() }),

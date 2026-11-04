@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { fixtureTransport, openLiveLesson } from '../fixtures/browser.js';
 
 test.use({ permissions: ['microphone'], launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } });
+// These scenarios exercise push-to-talk; hands-free is the product default.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorage.setItem('milli.handsFree', '0')); });
 
 test('voice output uses the shared typed conversation and can be interrupted, then reconnected', async ({ page }) => {
   const transport = await fixtureTransport(page);

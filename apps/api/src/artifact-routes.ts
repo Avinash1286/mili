@@ -1,5 +1,5 @@
+import { ArtifactRequestSchema, ShareRequestSchema } from '@tokai/contracts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { type Artifact, type StudyPack, type ShareLink, StudyPackSchema } from '@tokai/contracts';
 import { StoreError } from '@tokai/db';
@@ -8,15 +8,17 @@ import { principal, parse, enqueueArtifact, type ProductContext } from './produc
 type Params = { id: string };
 type SharedRecord = ShareLink & { pack: StudyPack };
 export type ArtifactFile = { storageKey: string; contentType: string; filename: string };
+const assertSavedFileAvailable = (artifact: Artifact, now: string) => { if (artifact.fileExpiresAt && Date.parse(artifact.fileExpiresAt) <= Date.parse(now)) throw new StoreError(410, 'OBJECT_EXPIRED', 'Saved file expired. Generate it again.'); };
 export async function registerArtifacts(app: FastifyInstance, context: ProductContext) {
   const { store, objects, now, env } = context;
   app.post<{ Params: Params }>('/v1/artifacts/:id/download-ticket', async (request, reply) => {
     const p = await principal(request, store), record = await store.resources.get<Artifact>(p, 'artifact', request.params.id);
+    assertSavedFileAvailable(record.data, now());
     if (record.data.status !== 'ready') throw new StoreError(409, 'ARTIFACT_NOT_READY', 'This download is not ready yet.');
     return reply.header('Cache-Control', 'no-store').send({ transfer: objects.createTransfer ? await objects.createTransfer(p, { kind: 'artifact', id: record.id, operation: 'download' }) : null });
   });
   app.post<{ Params: Params }>('/v1/sessions/:id/artifacts', async request => {
-    const p = await principal(request, store), input = parse(z.object({ kind: z.enum(['study-pack', 'recap', 'cards', 'export']), format: z.enum(['markdown', 'pdf', 'csv', 'json']).optional() }).strict(), request.body);
+    const p = await principal(request, store), input = parse(ArtifactRequestSchema, request.body);
     return store.locked(request.params.id, async () => {
       const session = await store.get(p, request.params.id);
       if (input.kind === 'recap' && !session.settings?.preferences.retainRecapAudio) throw new StoreError(409, 'AUDIO_CONSENT_REQUIRED', 'Enable saved recap audio for this lesson before generating it.');
@@ -37,14 +39,15 @@ export async function registerArtifacts(app: FastifyInstance, context: ProductCo
   });
   app.get<{ Params: Params }>('/v1/artifacts/:id/download', async (request, reply) => {
     const p = await principal(request, store), record = await store.resources.get<Artifact>(p, 'artifact', request.params.id);
+    assertSavedFileAvailable(record.data, now());
     if (record.data.status !== 'ready') throw new StoreError(409, 'ARTIFACT_NOT_READY', 'This download is not ready yet.');
-    const file = await store.resources.get<ArtifactFile>(p, 'artifact-file', record.id), result = await objects.get(file.data.storageKey);
+    const file = await store.resources.get<ArtifactFile>(p, 'artifact-file', record.id), result = await objects.get(file.data.storageKey, { principal: p, sessionId: record.data.sessionId });
     const session = await store.get(p, record.data.sessionId), current = await store.resources.get<Artifact>(p, 'artifact', record.id), currentFile = await store.resources.get<ArtifactFile>(p, 'artifact-file', record.id);
     if (current.revision !== record.revision || current.data.status !== 'ready' || currentFile.revision !== file.revision || current.data.kind === 'recap' && !session.settings?.preferences.retainRecapAudio) throw new StoreError(409, 'DOWNLOAD_REVOKED', 'This download changed or its retention consent was withdrawn.');
     return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').header('Content-Disposition', `attachment; filename="${file.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`).type(file.data.contentType).send(result.body);
   });
   app.post('/v1/share-links', async request => {
-    const p = await principal(request, store), input = parse(z.object({ sessionId: z.string().min(1).max(100), expiresInDays: z.number().int().min(1).max(30), includeNotes: z.boolean(), includeCards: z.boolean() }).strict(), request.body);
+    const p = await principal(request, store), input = parse(ShareRequestSchema, request.body);
     return store.locked(input.sessionId, async () => {
       await store.get(p, input.sessionId);
       if ((await store.resources.list(p, 'share', { sessionId: input.sessionId, limit: 100 })).length >= 20) throw new StoreError(429, 'SHARE_LIMIT', 'This lesson already has twenty share links.');

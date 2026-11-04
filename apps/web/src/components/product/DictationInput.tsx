@@ -6,7 +6,7 @@ import { api, errorText } from '@/lib/api';
 import styles from './Product.module.css';
 
 /** Captures at most 30 seconds locally, then sends bounded 16 kHz PCM on Stop. */
-export function DictationInput({ onTranscript, disabled = false }: { onTranscript: (text: string) => void; disabled?: boolean }) {
+export function DictationInput({ onTranscript, disabled = false, idleLabel = 'Dictate answer' }: { onTranscript: (text: string) => void; disabled?: boolean; idleLabel?: string }) {
   const [state, setState] = useState<'idle' | 'permission' | 'recording' | 'transcribing'>('idle'), [message, setMessage] = useState(''), [seconds, setSeconds] = useState(0);
   const epoch = useRef(0), stream = useRef<MediaStream | undefined>(undefined), context = useRef<AudioContext | undefined>(undefined), processor = useRef<AudioWorkletNode | undefined>(undefined), source = useRef<MediaStreamAudioSourceNode | undefined>(undefined);
   const packets = useRef<Int16Array[]>([]), samples = useRef(0), closing = useRef(false), recording = useRef(false), request = useRef<AbortController | undefined>(undefined);
@@ -64,5 +64,5 @@ export function DictationInput({ onTranscript, disabled = false }: { onTranscrip
       timer.current = setTimeout(() => stop(current), 30000); setState('recording'); setMessage('Recording locally. Stop to send for transcription, or Cancel to discard.');
     } catch (error) { if (current === epoch.current) { cleanup(); setState('idle'); setMessage(error instanceof DOMException && error.name === 'NotAllowedError' ? 'Microphone permission was denied. You can type the same answer.' : 'The microphone could not start. You can keep typing.'); } }
   }
-  return <div><div className={styles.actions}>{state === 'idle' ? <button type="button" className={styles.secondary} disabled={disabled} onClick={() => void start()}><Mic size={15}/> Dictate answer</button> : <>{state === 'recording' && <button type="button" className={styles.primary} onClick={() => stop()}><Square size={14}/> Stop and transcribe · {seconds}s</button>}<button type="button" className={styles.secondary} onClick={cancel}><X size={14}/> Cancel dictation</button></>}</div>{message && <p className={styles.muted} role="status" style={{ marginTop: 9 }}>{message}</p>}</div>;
+  return <div><div className={styles.actions}>{state === 'idle' ? <button type="button" className={styles.secondary} disabled={disabled} onClick={() => void start()}><Mic size={15}/> {idleLabel}</button> : <>{state === 'recording' && <button type="button" className={styles.primary} onClick={() => stop()}><Square size={14}/> Stop and transcribe · {seconds}s</button>}<button type="button" className={styles.secondary} onClick={cancel}><X size={14}/> Cancel dictation</button></>}</div>{message && <p className={styles.muted} role="status" style={{ marginTop: 9 }}>{message}</p>}</div>;
 }

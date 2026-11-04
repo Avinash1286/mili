@@ -28,11 +28,11 @@ test('voice availability distinguishes a failed check from missing configuration
   expect(checks).toBeGreaterThanOrEqual(2);
   expect(checks).toBeLessThanOrEqual(3);
   const failedChecks = checks;
-  await expect(voice).not.toContainText('Configure the tutor');
+  await expect(voice).not.toContainText('Voice needs');
   await expect(page.getByRole('textbox', { name: 'Ask your tutor a question', exact: true })).toBeEditable();
   stage = 'unconfigured';
   await voice.getByRole('button', { name: 'Retry voice availability', exact: true }).click();
-  await expect(voice).toContainText('Configure the tutor and AssemblyAI speech keys');
+  await expect(voice).toContainText('Voice needs the tutor and AssemblyAI keys');
   expect(checks).toBe(failedChecks + 1); // A valid unavailable response must not automatically retry.
   await expect(voice.getByRole('button', { name: 'Start voice', exact: true })).toBeDisabled();
   stage = 'configured';
@@ -77,7 +77,7 @@ test('late saved preferences fill untouched defaults without overwriting onboard
   const payload = await response.json();
   expect(payload.session.settings).toMatchObject({ goal: 'Explain shadow length with a lamp and a pencil.', preferences: { language: 'spanish', level: 'advanced', lessonMinutes: 30, retainTranscript: false, retainRecapAudio: true } });
   await expect(page).toHaveURL(/\/learn\/[a-f0-9-]{36}$/);
-  await expect(page.getByRole('heading', { name: 'Let’s see the bigger picture.', exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Lesson progress', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start voice', exact: true })).toBeEnabled();
   await page.unrouteAll({ behavior: 'wait' });
   expect(transport.errors).toEqual([]);

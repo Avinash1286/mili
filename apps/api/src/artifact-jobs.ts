@@ -3,7 +3,9 @@ import { ArtifactSchema, AssessmentDefinitionSchema, LearningCardSchema, Learnin
 import { StoreError, type JobRecord, type Principal, type Resource } from '@tokai/db';
 import { buildStudyPack, createCardSchedule, instantiatePackCards } from '@tokai/learning';
 import { createSynthesizer, TTS_SAMPLE_RATE, type Synthesizer, type SynthesisBoundaries } from '@tokai/speech';
-import { generateAssessment, generateLearningCards } from '@tokai/tutor-core/learning';
+import { generateAssessment, generateLearningCards, generateRecapDialogue, type RecapDialogue } from '@tokai/tutor-core/learning';
+import { TUTOR_VOICES } from '@tokai/contracts';
+import { liveModels, liveModelsConfigured } from './live-models.js';
 import { authoredPack, bumpSession, optionalResource, metered, type AttemptRecord, type ProductContext } from './product-context.js';
 import { pcmToWav, renderArtifactExport, renderCardsJson, type ArtifactBytes } from './artifact-export.js';
 import type { ArtifactFile } from './artifact-routes.js';
@@ -52,6 +54,27 @@ export function captionWords(frame: SynthesisBoundaries, durationMs: number): No
   return captions;
 }
 export async function synthesizeRecap(context: ProductContext, session: Session, text: string, signal: AbortSignal): Promise<ArtifactBytes & { durationMs: number; captions: NonNullable<Artifact['captions']> }> {
+  const result = await synthesizePcm(context, session, text, session.settings?.preferences.voiceId, signal);
+  return { body: pcmToWav(result.pcm), contentType: 'audio/wav', extension: 'wav', durationMs: result.durationMs, captions: result.captions };
+}
+const PAUSE_MS = 280;
+/** Two voices read a dialogue rewritten from the same recap; captions mark each speaker. */
+export async function synthesizeDialogue(context: ProductContext, session: Session, dialogue: RecapDialogue, signal: AbortSignal): Promise<ArtifactBytes & { durationMs: number; captions: NonNullable<Artifact['captions']> }> {
+  const language = session.settings?.preferences.language ?? 'english', milli = session.settings?.preferences.voiceId ?? 'aai-audrey';
+  const sam = TUTOR_VOICES.find(voice => voice.language === language && voice.id !== milli)?.id ?? (milli === 'aai-titus' ? 'aai-sara' : 'aai-titus');
+  const parts: Buffer[] = [], captions: NonNullable<Artifact['captions']> = [], silence = Buffer.alloc(Math.round(TTS_SAMPLE_RATE * PAUSE_MS / 1000) * 2);
+  let offsetMs = 0;
+  for (const line of dialogue.lines) {
+    const spoken = await synthesizePcm(context, session, line.text, line.speaker === 'milli' ? milli : sam, signal);
+    captions.push({ text: line.speaker === 'milli' ? 'milli:' : 'Sam:', startMs: offsetMs, endMs: offsetMs });
+    for (const word of spoken.captions) captions.push({ text: word.text, startMs: word.startMs + offsetMs, endMs: word.endMs + offsetMs });
+    parts.push(spoken.pcm, silence); offsetMs += spoken.durationMs + PAUSE_MS;
+    if (offsetMs > 120_000) throw new StoreError(502, 'INVALID_RECAP_AUDIO', 'The recap exceeded its audio limit.');
+  }
+  if (captions.length > 1500) throw new StoreError(502, 'RECAP_TIMING_LIMIT', 'The recap returned too many word timings.');
+  return { body: pcmToWav(Buffer.concat(parts)), contentType: 'audio/wav', extension: 'wav', durationMs: offsetMs, captions };
+}
+async function synthesizePcm(context: ProductContext, session: Session, text: string, voiceId: string | undefined, signal: AbortSignal): Promise<{ pcm: Buffer; durationMs: number; captions: NonNullable<Artifact['captions']> }> {
   if (!session.settings?.preferences.retainRecapAudio) throw new StoreError(409, 'AUDIO_CONSENT_REQUIRED', 'Enable saved recap audio for this lesson before generating it.');
   if (!context.env.ASSEMBLYAI_API_KEY) throw new StoreError(503, 'SPEECH_UNAVAILABLE', 'AssemblyAI speech is not configured.');
   const chunks: Buffer[] = []; let byteLength = 0, boundaries: SynthesisBoundaries | undefined, synthesizer: Synthesizer | undefined, failure: Error | undefined;
@@ -60,7 +83,7 @@ export async function synthesizeRecap(context: ProductContext, session: Session,
   let onAbort: () => void = () => {};
   const aborted = new Promise<never>((_, reject) => { onAbort = () => reject(new StoreError(503, 'RECAP_CANCELLED', 'Recap generation was cancelled or reached its deadline.')); combined.addEventListener('abort', onAbort, { once: true }); if (combined.aborted) onAbort(); });
   try {
-    synthesizer = await Promise.race([(context.providers?.recap ?? createSynthesizer)({ apiKey: context.env.ASSEMBLYAI_API_KEY, voiceId: session.settings.preferences.voiceId, language: session.settings.preferences.language, signal: combined,
+    synthesizer = await Promise.race([(context.providers?.recap ?? createSynthesizer)({ apiKey: context.env.ASSEMBLYAI_API_KEY, voiceId, language: session.settings.preferences.language, signal: combined,
       onAudio(pcm) { if (combined.aborted) return; byteLength += pcm.byteLength; if (byteLength > TTS_SAMPLE_RATE * 2 * 120 || pcm.byteLength % 2) { abort.abort(); throw new StoreError(502, 'INVALID_RECAP_AUDIO', 'The recap exceeded its audio limit.'); } chunks.push(Buffer.from(pcm)); },
       onBoundaries(frame) { if (!combined.aborted) boundaries = frame; }, onError(error) { failure = error; },
     }).then(value => { if (combined.aborted) value.close(); return value; }), aborted]);
@@ -68,7 +91,7 @@ export async function synthesizeRecap(context: ProductContext, session: Session,
     if (failure) throw failure;
     if (!boundaries) throw new StoreError(502, 'RECAP_TIMINGS_UNAVAILABLE', 'The provider returned no word timings. The text study pack remains available.');
     const pcm = Buffer.concat(chunks, byteLength), durationMs = byteLength * 1000 / (TTS_SAMPLE_RATE * 2), captions = captionWords(boundaries, durationMs);
-    return { body: pcmToWav(pcm), contentType: 'audio/wav', extension: 'wav', durationMs, captions };
+    return { pcm, durationMs, captions };
   } finally { clearTimeout(timer); combined.removeEventListener('abort', onAbort); synthesizer?.close(); }
 }
 
@@ -83,7 +106,7 @@ export async function runArtifact(context: ProductContext, p: Principal, job: Jo
   if (record.revision !== job.expectedRevision || record.sessionId !== job.sessionId || artifact.sessionId !== job.sessionId) throw new StoreError(409, 'STALE_JOB', 'This artifact job has been superseded.');
   const session = await store.get(p, job.sessionId), initial = await snapshot(context, p, session.id), sourceInput = await sources(context, p, session);
   const pack = authoredPack(session), covered = [...new Set((session.teachingBeats ?? []).filter(beat => beat.status === 'completed' && (beat.playedMs ?? 0) > 0).flatMap(beat => beat.conceptIds))];
-  const provider = { apiKey: env.GEMINI_API_KEY ?? '', model: env.GEMINI_MODEL ?? '', signal };
+  const provider = { ...liveModels(env), signal };
   let nextCards = initial.cards.map(item => item.data), newCards: LearningCard[] = [], assessment: AssessmentDefinition | undefined;
   if (artifact.kind === 'cards') {
     if (session.mode === 'sample') {
@@ -114,15 +137,21 @@ export async function runArtifact(context: ProductContext, p: Principal, job: Jo
   }
   let bytes: ArtifactBytes | undefined, durationMs: number | undefined, captions: Artifact['captions'];
   if (artifact.kind === 'recap') {
-    const text = recapText(study), result = await metered(context, p, 'speech', [...text.trim()].length, async observe => { const audio = await synthesizeRecap(context, session, text, signal); observe({ audioMs: audio.durationMs }); return audio; }, { sessionId: session.id, traceId: job.id }); bytes = result; durationMs = result.durationMs; captions = result.captions;
+    const text = recapText(study), language = session.settings?.preferences.language ?? 'english';
+    // Injected test recap providers keep the deterministic single-voice path.
+    const dialogue = session.mode === 'live' && !context.providers?.recap && liveModelsConfigured(env)
+      ? await metered(context, p, 'model', 1, onUsage => generateRecapDialogue({ ...provider, recap: text, language, onUsage }), { sessionId: session.id, traceId: job.id }).catch(() => undefined) : undefined;
+    signal.throwIfAborted();
+    const units = dialogue ? [...dialogue.lines.map(line => line.text).join(' ')].length : [...text.trim()].length;
+    const result = await metered(context, p, 'speech', units, async observe => { const audio = dialogue ? await synthesizeDialogue(context, session, dialogue, signal) : await synthesizeRecap(context, session, text, signal); observe({ audioMs: audio.durationMs }); return audio; }, { sessionId: session.id, traceId: job.id }); bytes = result; durationMs = result.durationMs; captions = result.captions;
     study = StudyPackSchema.parse({ ...study, recap: { ...study.recap, text, status: 'ready' } });
   } else if (artifact.kind === 'cards') bytes = renderCardsJson(study);
   else if (artifact.kind !== 'assessment') bytes = await renderArtifactExport(study, artifact.kind === 'export' ? artifact.format : 'markdown');
   // A delivery can be duplicated under the same lease; each execution owns its temporary bytes.
   const storageKey = `artifact/${artifact.id}/${job.id}-${job.fence}-${randomUUID()}`;
-  let uploaded = false, published = false;
+  let uploaded = false, published = false, fileExpiresAt: string | undefined;
   try {
-    if (bytes) { signal.throwIfAborted(); await objects.put(storageKey, bytes.body, bytes.contentType, { signal }); uploaded = true; }
+    if (bytes) { signal.throwIfAborted(); const stored = await objects.put(storageKey, bytes.body, bytes.contentType, { principal: p, sessionId: session.id, signal }); fileExpiresAt = stored.expiresAt; uploaded = true; }
     signal.throwIfAborted();
     await store.locked(session.id, async () => {
       signal.throwIfAborted(); await store.assertJob({ id: job.id, workerId: job.workerId!, fence: job.fence });
@@ -136,9 +165,9 @@ export async function runArtifact(context: ProductContext, p: Principal, job: Jo
       if (clearTranscript) await store.save(p, { ...bumpSession(currentSession, now()), messages: [], teachingBeats: [], summary: study.referenceConcepts.slice(0, 4).map(concept => `${concept.label}: ${concept.explanation}`).join('\n').slice(0, 4000) }, { expectedRevision: currentSession.revision });
       if (bytes) {
         const previous = await optionalResource<ArtifactFile>(store, p, 'artifact-file', artifact.id);
-        await store.resources.put(p, 'artifact-file', artifact.id, { storageKey, contentType: bytes.contentType, filename: `tokai-${artifact.kind}-${artifact.id}.${bytes.extension}` } satisfies ArtifactFile, { expectedRevision: previous?.revision ?? -1, sessionId: session.id });
+        await store.resources.put(p, 'artifact-file', artifact.id, { storageKey, contentType: bytes.contentType, filename: `milli-${artifact.kind}-${artifact.id}.${bytes.extension}` } satisfies ArtifactFile, { expectedRevision: previous?.revision ?? -1, sessionId: session.id });
       }
-      const ready = ArtifactSchema.parse({ ...artifact, status: 'ready', format: artifact.kind === 'recap' ? 'wav' : artifact.kind === 'cards' ? 'json' : artifact.format, revision: artifact.revision + 1, updatedAt: now(), ...(durationMs !== undefined ? { durationMs, captions } : {}), error: undefined });
+      const ready = ArtifactSchema.parse({ ...artifact, status: 'ready', format: artifact.kind === 'recap' ? 'wav' : artifact.kind === 'cards' ? 'json' : artifact.format, revision: artifact.revision + 1, updatedAt: now(), fileExpiresAt, ...(durationMs !== undefined ? { durationMs, captions } : {}), error: undefined });
       await store.resources.put(p, 'artifact', artifact.id, ready, { expectedRevision: record.revision, sessionId: session.id });
       await store.appendEvent(p, session.id, { id: randomUUID(), type: 'artifact.ready', data: { artifactId: artifact.id, kind: artifact.kind } });
     });

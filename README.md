@@ -14,7 +14,7 @@ The chosen stack is Convex plus a persistent Fastify voice/API service, with the
 
 ## Local setup
 
-Requires Node.js24 and pnpm10.33.0. Full local accounts additionally use Java25 and the verified native Keycloak installation. Start with:
+Requires Node.js24 and pnpm10.33.0. Native email/password accounts run on Convex; the optional local OIDC alternative additionally uses Java25 and Keycloak. Start with:
 
 ```powershell
 cd F:\mili
@@ -26,11 +26,13 @@ pnpm models:sync
 
 Set provider keys only in ignored `.env`. Follow the [local infrastructure guide](infra/local/README.md) once to initialize native Convex, service credentials and local sign-in. Existing Phase1–4 data has an idempotent importer with backups; never replace a saved database with a fresh seed.
 
-Keep Convex and the optional identity server running in separate terminals:
+Keep Convex running in a separate terminal:
 
 ```powershell
 pnpm local:convex
 ```
+
+Only when using the optional Keycloak/OIDC sign-in method, also run:
 
 ```powershell
 pnpm local:identity
@@ -70,9 +72,12 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 pnpm assets:check
 pnpm models:check
+pnpm api:spec:check
 ```
 
 Ordinary tests use isolated temporary data and injected providers. Real local infrastructure checks are opt-in and clearly identified. `pnpm verify:local-learning` exercises actual Convex scheduling, private upload, text PDF parsing, scanned-page OCR, vector retrieval and owner isolation, then deletes its temporary learner.
+
+The [HTTP/voice contract](docs/api.md) explains authentication, idempotency and private transfers. [OpenAPI](docs/openapi.json) is generated from registered routes and shared request schemas with `pnpm api:spec`.
 
 Provider checks are separate and consume the configured account quota: `pnpm verify:tutor --live`, `pnpm verify:teaching --live --timeout=45000` (one request by default) and `pnpm verify:speech --live --streaming`. No check changes billing. Probe output under `var/probes` is ignored.
 
@@ -81,3 +86,5 @@ Provider checks are separate and consume the configured account quota: `pnpm ver
 Provider credentials remain server-side. Expiring guest credentials identify this browser's workspace; sign-in can claim it. Uploads and generated downloads are authorized, shares are opt-in/revocable, transcript and recap retention are explicit choices, and source parsing runs in a bounded child without provider credentials. Camera pixels remain local; sharing a board crop is a separate explicit action.
 
 Local OCR and the compact embedding model are English-focused. Prepared reference packs have source attribution and automated consistency checks; independent teacher review and educational-effectiveness validation are not claimed. Physical hand recognition, combined real-device audio/graphics behavior, Safari/iOS and screen-reader checks remain distinct from Chromium fixtures. See [provenance](docs/provenance.md).
+
+Native password accounts do not yet provide email verification or password recovery. The compatible authentication dependency has documented advisories in disabled optional flows; exact endpoint guards enforce the restricted configuration. See the [dependency review](docs/phase-6-auth-dependency-review.md) for the remaining upstream limitation.

@@ -166,11 +166,12 @@ export const api = {
   async end(id: string) { const data = await request(`/v1/sessions/${encodeURIComponent(id)}/end`, { method: 'POST', body: '{}' }); return SessionSchema.parse(data.session); },
   async remove(id: string) { await request(`/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   speech: (id: string, messageId: string) => binary(`${sessionPath(id)}/speech`, json({ messageId })),
+  voicePreview: (voiceId: string) => binary(`/v1/voices/${encodeURIComponent(voiceId)}/preview`, json({})),
 };
 export function voiceSocketUrl(ticket: string) { const url = new URL(`${API}/v1/voice`, typeof window === 'undefined' ? undefined : window.location?.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.searchParams.set('ticket', ticket); return url.toString(); }
 export function errorText(error: unknown) { return error instanceof TypeError ? 'We couldn’t reach your learning workspace. Check that the server is running, then try again.' : error instanceof Error ? error.message : 'Something went wrong. Please try again.'; }
 export function downloadBlob(blob: Blob, filename: string) { const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = filename.replace(/[\\/:*?"<>|]/g, '-'); link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 export function downloadSummary(session: Session) {
   const text = `# ${session.title}\n\n${session.mode === 'sample' ? '> Guided sample lesson. Responses are prepared examples, not live AI.\n\n' : ''}${session.summary || '## Conversation\n\n' + session.messages.map(m => `**${m.role === 'tutor' ? 'Tutor' : 'You'}:** ${m.text}`).join('\n\n')}\n\n## Review cards\n\n${session.flashcards.map(c => `### ${c.front}\n\n${c.back}`).join('\n\n')}`;
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `tokai-${session.topic}-notes.md`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `milli-${session.topic}-notes.md`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

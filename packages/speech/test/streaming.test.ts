@@ -224,6 +224,22 @@ describe('streaming TTS wire protocol', () => {
     await tts.speak('Hello.'); expect(input.onBoundaries).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { begin: { word_boundaries: false }, frame: undefined },
+    { begin: {}, frame: { ...boundaries, words: [{ word: 'Hello.', start: 10, end: 99999, confidence: .9 }] } },
+  ])('keeps audio when word timings are disabled or malformed %#', async ({ begin, frame }) => {
+    const p = await provider(socket => {
+      send(socket, { ...ttsBegin(), configuration: { ...ttsBegin().configuration, ...begin } }); socket.on('message', data => {
+        const message = JSON.parse(data.toString());
+        if (message.type === 'Flush') { send(socket, audioFrame); send(socket, flushDone); if (frame) send(socket, frame); }
+        if (message.type === 'Terminate') send(socket, { type: 'Termination' });
+      });
+    });
+    const input = ttsInput(); const tts = await createSynthesizer(input, p.dependencies); disposables.push(tts);
+    await tts.speak('Hello.');
+    expect(input.onAudio).toHaveBeenCalledTimes(1); expect(input.onBoundaries).not.toHaveBeenCalled(); expect(input.onError).not.toHaveBeenCalled();
+  });
+
   it('drops cancellation tails and uses a new provider namespace for the next reply', async () => {
     const received: string[] = [];
     const p = await provider((socket, index) => {
@@ -301,7 +317,7 @@ describe('streaming TTS wire protocol', () => {
   });
 
   it.each([
-    { sample_rate: 16000 }, { encoding: 'mp3' }, { model: 'latest' }, { word_boundaries: false }, { voice_id: 'wrong' },
+    { sample_rate: 16000 }, { encoding: 'mp3' }, { model: 'latest' }, { word_boundaries: 'yes' }, { voice_id: 'wrong' },
   ])('rejects mismatched Begin before text is submitted: %j', async override => {
     const received = vi.fn();
     const p = await provider(socket => {

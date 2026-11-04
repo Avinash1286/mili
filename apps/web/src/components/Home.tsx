@@ -1,36 +1,63 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowUpRight, ArrowRight, BookOpen, Clock3, Leaf, LayoutDashboard, RefreshCw, Sparkles, Trash2, Check, ChevronRight, CircleHelp } from 'lucide-react';
-import { TOPICS, type Topic, type Session, type Capabilities, type Identity } from '@tokai/contracts';
+import { ArrowRight, ArrowUp, Check, Clock3, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { TOPICS, CreateLessonSchema, type Topic, type Session, type Capabilities, type Identity } from '@tokai/contracts';
 import { api, errorText } from '@/lib/api';
-import { Brand, Mark } from './Brand';
+import { AppNav } from './AppNav';
 import { TopicArt } from './TopicArt';
-import navigation from './product/HomeNavigation.module.css';
+import { VoiceOrb } from './VoiceOrb';
+import { DictationInput } from './product/DictationInput';
+
+const shortNames: Record<Topic, string> = { photosynthesis: 'Photosynthesis', fractions: 'Fractions', 'solar-system': 'The solar system', circuits: 'Circuits' };
 
 export function Home() {
   const router = useRouter(); const [sessions, setSessions] = useState<Session[]>([]); const [capabilities, setCapabilities] = useState<Capabilities>({ tutor: false, speech: false, voice: false });
-  const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [busy, setBusy] = useState<Topic | string>(); const [mode, setMode] = useState<'sample' | 'live'>('sample'); const [help, setHelp] = useState(false);
-  const [identity, setIdentity] = useState<Identity>();
-  const load = useCallback(async () => { setLoading(true); setError(''); try { const [items, health] = await Promise.all([api.list(), api.health()]); setSessions(items); setCapabilities(health); } catch (e) { setError(errorText(e)); } finally { setLoading(false); } }, []);
+  const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [busy, setBusy] = useState<Topic | string>(); const [mode, setMode] = useState<'sample' | 'live'>('sample');
+  const [identity, setIdentity] = useState<Identity>(); const [question, setQuestion] = useState(''); const modeChosen = useRef(false);
+  const choose = (value: 'sample' | 'live') => { modeChosen.current = true; setMode(value); };
+  const load = useCallback(async () => { setLoading(true); setError(''); try { const [items, health] = await Promise.all([api.list(), api.health()]); setSessions(items); setCapabilities(health); if (!modeChosen.current && health.tutor) setMode('live'); } catch (e) { setError(errorText(e)); } finally { setLoading(false); } }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void api.me().then(value => setIdentity(value.identity)).catch(() => undefined); }, []);
   async function start(topic: Topic) { setBusy(topic); setError(''); try { const session = await api.create(topic, mode); router.push(`/learn/${session.id}`); } catch (e) { setError(errorText(e)); setBusy(undefined); } }
   async function remove(session: Session) { if (!window.confirm(`Delete “${session.title}” and its saved notes?`)) return; setBusy(session.id); try { await api.remove(session.id); setSessions(items => items.filter(s => s.id !== session.id)); } catch (e) { setError(errorText(e)); } finally { setBusy(undefined); } }
-  return <div className="app-home">
-    <aside className="home-sidebar"><Brand /><div className="sidebar-group"><span className="eyebrow">YOUR LITTLE LEARNING SPACE</span><a className="nav-item selected" href="#main"><LayoutDashboard size={18}/> Discover <span className="nav-dot"/></a><Link className="nav-item" href="/dashboard"><BookOpen size={18}/> My learning <span className="nav-count">{sessions.length}</span></Link><Link className="nav-item" href="/library">Library & sources</Link><Link className="nav-item" href="/review">Daily review</Link><Link className="nav-item" href="/settings">Preferences & access</Link></div><div className="sidebar-note"><span className="tiny-orbit">✳</span><p>Big ideas begin with<br/><em>little questions.</em></p><span className="hand-line"/></div><div className="sidebar-bottom"><div className="guest-avatar">{(identity?.displayName || 'Y').slice(0, 1).toUpperCase()}</div><div><strong>{identity?.displayName || 'Your learning space'}</strong><span>{identity?.kind === 'user' ? 'Signed in' : 'Guest · this browser'}</span></div></div></aside>
-    <div className="home-main"><header className="home-topbar"><div className="mobile-brand"><Brand /></div><span className="breadcrumb">Your workspace <ChevronRight size={13}/> Discover</span><button className="subtle-button help-button" onClick={() => setHelp(!help)} aria-expanded={help}><CircleHelp size={17}/><span>How Tokai works</span></button></header>
-      <nav className={navigation.links} aria-label="Learning pages"><Link href="/learn/new">+ Plan a new lesson</Link><Link href="/dashboard">My learning</Link><Link href="/library">Library</Link><Link href="/review">Review</Link><Link href="/settings">Settings</Link></nav>
-      <main id="main" className="home-content"><section className="welcome-row"><div><div className="welcome-kicker"><span className="sun-symbol">☼</span> A GOOD DAY TO LEARN SOMETHING</div><h1>Make room for <em>curiosity.</em></h1><p className="welcome-copy">No question too small. No idea too big.<br/>Let’s make the things you’re wondering about click.</p></div><div className="welcome-stamp"><Leaf size={24}/><span>A LITTLE<br/>EVERY DAY</span><div>✧</div></div></section>
-      {help && <section className="help-panel"><div><Mark small/><h2>A space to think out loud. Or type.</h2></div><p>Pick a topic, explore the editable concept board, and ask questions about anything you select. Your lessons and review cards stay in your guest workspace.</p><p><strong>Guided samples</strong> use prepared educational responses. <strong>Live tutoring</strong> uses a configured AI provider. Audio playback appears when a speech provider is configured. In live lessons, start voice for push-to-talk or hands-free conversation. Optional camera gestures run locally on your device. All four 3D models also have keyboard controls and labeled diagrams.</p></section>}
-      <section className="featured-lesson"><div className="featured-content"><span className="feature-label"><span/> THE WORLD IS FULL OF WHYS</span><h2>A leaf. A little sunlight.<br/>A pretty big idea.</h2><p>Discover how plants turn light into life.<br/>One clear explanation at a time.</p><button className="primary-button" disabled={!!busy || loading} onClick={() => void start('photosynthesis')}>{busy === 'photosynthesis' ? 'Opening your lesson…' : 'Explore photosynthesis'}<ArrowUpRight size={19}/></button><span className="featured-meta"><Clock3 size={13}/> A 12-minute lesson <span>·</span> {mode === 'sample' ? 'Guided sample' : 'Live AI tutor'}</span></div><div className="featured-art"><div className="sun-disc"/><svg viewBox="0 0 420 300" fill="none" aria-hidden="true"><path d="M204 284V81" stroke="#C4D9BC" strokeWidth="5"/><path d="M202 232C113 225 83 181 90 135c85 0 124 48 112 97Z" fill="#759B78"/><path d="M207 181c-10-99 57-134 119-139 10 73-42 134-119 139Z" fill="#B2C998"/><path d="m107 150 97 81m5-50 96-115" stroke="#E1E8CC" strokeWidth="2"/><path d="M213 229c2-49 36-75 90-74-7 48-43 73-90 74Z" fill="#4F795E"/><path d="M205 111c-41-9-55-36-51-69 39 7 57 31 51 69Z" fill="#A1B995"/><path d="M149 284h111" stroke="#C4D9BC" strokeWidth="3" strokeLinecap="round"/><path d="m321 118 30-14m-34 34 23 2" stroke="#DBCF8B" strokeWidth="2" strokeLinecap="round"/></svg><span className="art-annotation annotation-light">a little light <span>↙</span></span><span className="art-annotation annotation-life">a lot of life <span>↗</span></span><span className="floating-pill">CO₂ + H₂O + a little ☀</span></div></section>
-      {error && <div className="error-banner" role="alert"><p>{error}</p><button onClick={() => void load()} className="subtle-button"><RefreshCw size={15}/> Try again</button></div>}
-      <section className="topic-section"><div className="section-heading"><div><span className="eyebrow">FOLLOW YOUR CURIOSITY</span><h2>What’s on your mind?</h2></div><div className="mode-switch" role="group" aria-label="Lesson mode"><button aria-pressed={mode === 'sample'} onClick={() => setMode('sample')}>Guided sample</button><button disabled={!capabilities.tutor} title={!capabilities.tutor ? 'Configure a tutor provider to enable live AI lessons' : 'Talk with the live AI tutor'} aria-pressed={mode === 'live'} onClick={() => setMode('live')}><Sparkles size={12}/> Live AI {!capabilities.tutor && <span className="coming-dot"/>}</button></div></div><p className="mode-description">{mode === 'sample' ? 'Explore prepared lessons with an editable board. Sample responses are not generated by AI.' : 'Ask your own questions. Your configured AI tutor will answer using the lesson context.'}</p><div className="topics-grid">{TOPICS.map((topic, index) => <button key={topic.id} className={`topic-card topic-${topic.id}`} disabled={!!busy || loading} onClick={() => void start(topic.id)}><div className="topic-art-wrap"><span className="topic-number">0{index + 1}</span><TopicArt topic={topic.id}/><span className="topic-open"><ArrowUpRight size={18}/></span></div><div className="topic-copy"><span className="eyebrow">{topic.subject}</span><h3>{topic.title}</h3><p>{topic.description}</p><span className="topic-time"><Clock3 size={12}/>{busy === topic.id ? 'Opening…' : topic.duration}</span></div></button>)}</div></section>
-      <section id="your-sessions" className="sessions-section"><div className="section-heading"><div><span className="eyebrow">PICK UP WHERE YOU LEFT OFF</span><h2>Your learning, unfolding.</h2></div><span className="session-total">{sessions.length} {sessions.length === 1 ? 'lesson' : 'lessons'} saved</span></div>{loading ? <div className="empty-sessions loading-state"><span className="spinner"/> Opening your learning space…</div> : !sessions.length ? <div className="empty-sessions"><div className="empty-icon"><BookOpen size={23}/></div><div><h3>Your first page is waiting.</h3><p>Start a lesson above. Your notes, concepts, and review cards will find a home here.</p></div><span className="empty-spark">✧</span></div> : <div className="session-list">{sessions.map(session => <article className="saved-session" key={session.id}><div className={`session-topic-symbol symbol-${session.topic}`}>{session.topic === 'photosynthesis' ? <Leaf size={23}/> : <BookOpen size={23}/>}</div><Link className="session-link" href={`/learn/${session.id}`}><h3>{session.title}</h3><p>{session.mode === 'sample' ? 'Guided sample' : 'Live AI'}<span>·</span>{new Date(session.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}<span>·</span>{session.concepts.length} concepts</p></Link><span className={`status-tag ${session.status}`} >{session.status === 'ended' ? <><Check size={12}/> Completed</> : 'In progress'}</span><Link className="session-resume" aria-label={`Open ${session.title}`} href={`/learn/${session.id}`}><ArrowRight size={18}/></Link><button className="icon-button delete-session" aria-label={`Delete ${session.title}`} disabled={!!busy} onClick={() => void remove(session)}><Trash2 size={15}/></button></article>)}</div>}</section>
-      <footer className="home-footer"><span><Mark small/> Made for the way you wonder.</span><span>Take your time. Understanding is worth it.</span></footer>
-      </main></div>
+  async function ask(value = question) {
+    const topic = value.trim().slice(0, 160); if (topic.length < 2 || busy) return;
+    if (!capabilities.tutor) { router.push(`/learn/new?topic=${encodeURIComponent(topic)}`); return; }
+    setBusy('ask'); setError('');
+    try {
+      const me = await api.me();
+      const session = await api.createLesson(CreateLessonSchema.parse({ topic, mode: 'live', goal: me.preferences.goal, sourceIds: [], grounding: 'general', preferences: me.preferences }));
+      router.push(`/learn/${session.id}`);
+    } catch (e) { setError(errorText(e)); setBusy(undefined); }
+  }
+  const current = sessions.find(session => session.status !== 'ended');
+  return <div className="milli-home">
+    <AppNav identity={identity}/>
+    <main id="main" className="home-wrap">
+      <section className="home-hero">
+        <VoiceOrb state={busy === 'ask' ? 'thinking' : 'idle'}/>
+        <h1>What do you want to learn?</h1>
+        <p>{busy === 'ask' ? 'Planning your lesson…' : 'Talk it through with milli. See it click.'}</p>
+        <form className="hero-ask" onSubmit={event => { event.preventDefault(); void ask(); }}>
+          <label className="sr-only" htmlFor="hero-question">Topic or question</label>
+          <input id="hero-question" value={question} maxLength={160} disabled={busy === 'ask'} onChange={event => setQuestion(event.target.value)} placeholder="Why is the sky blue?"/>
+          <DictationInput idleLabel="Say it" disabled={busy === 'ask'} onTranscript={value => { setQuestion(value.slice(0, 160)); void ask(value); }}/>
+          <button className="send-button" type="submit" aria-label="Start a lesson on this" disabled={question.trim().length < 2 || !!busy}><ArrowUp size={18}/></button>
+        </form>
+        {question.trim().length >= 2 && !busy && <Link className="text-button" href={`/learn/new?topic=${encodeURIComponent(question.trim().slice(0, 160))}`}>More options</Link>}
+      </section>
+      {error && <div className="error-banner" role="alert"><p>{error}</p><button onClick={() => void load()} className="pill-button"><RefreshCw size={15}/> Try again</button></div>}
+      {current && <Link className="continue-card" href={`/learn/${current.id}`}><span className="continue-art">{current.topic in shortNames ? <TopicArt topic={current.topic as Topic}/> : <VoiceOrb state="idle" size="small"/>}</span><span className="continue-copy"><small>Continue</small><strong>{current.title}</strong></span><span className="chunky-button small">Resume<ArrowRight size={16}/></span></Link>}
+      <section className="topic-section">
+        <div className="section-row"><h2>Start a lesson</h2><div className="mode-switch" role="group" aria-label="Lesson mode"><button disabled={!capabilities.tutor} title={!capabilities.tutor ? 'Live AI isn’t configured' : 'Talk with the live AI tutor'} aria-pressed={mode === 'live'} onClick={() => choose('live')}><Sparkles size={13}/> Live AI</button><button aria-pressed={mode === 'sample'} title="Prepared lessons without AI or voice" onClick={() => choose('sample')}>Offline demo</button></div></div>
+        <div className="topics-grid">{TOPICS.map(topic => <button key={topic.id} className={`topic-card topic-${topic.id}`} disabled={!!busy || loading} onClick={() => void start(topic.id)}><span className="topic-art-wrap"><TopicArt topic={topic.id}/></span><span className="topic-copy"><strong>{shortNames[topic.id]}</strong><span>{topic.title}</span><small><Clock3 size={12}/>{busy === topic.id ? 'Opening…' : topic.duration}{mode === 'sample' ? ' · demo' : ' · live'}</small></span></button>)}</div>
+      </section>
+      <section id="your-sessions" className="sessions-section">
+        <div className="section-row"><h2>Your lessons</h2><div className="section-links"><Link className="text-button" href="/library">Sources</Link>{!!sessions.length && <Link className="text-button" href="/dashboard">Manage</Link>}</div></div>
+        {loading ? <div className="empty-sessions loading-state"><span className="spinner"/> Loading…</div> : !sessions.length ? <div className="empty-sessions"><h3>No lessons yet</h3><p>Pick a topic above or just ask.</p></div> : <div className="session-list">{sessions.map(session => <article className="saved-session" key={session.id}><span className="session-dot" data-mode={session.mode}/><Link className="session-link" href={`/learn/${session.id}`}><h3>{session.title}</h3><p>{session.mode === 'sample' ? 'Sample' : 'Live AI'} · {new Date(session.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p></Link><span className={`status-tag ${session.status}`}>{session.status === 'ended' ? <><Check size={12}/> Completed</> : 'In progress'}</span><button className="icon-button delete-session" aria-label={`Delete ${session.title}`} disabled={!!busy} onClick={() => void remove(session)}><Trash2 size={15}/></button></article>)}</div>}
+      </section>
+    </main>
   </div>;
 }
-
-

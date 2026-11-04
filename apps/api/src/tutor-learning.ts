@@ -4,6 +4,7 @@ import { StoreError, type Principal, type Resource } from '@tokai/db';
 import { applyAssistance, createPresentation, deriveMastery, evaluateAttempt, projectAssessment } from '@tokai/learning';
 import { plainTeachingBeat, type PreparedLearningAction, type TutorLearningContext, type TutorReply } from '@tokai/tutor-core';
 import { createGeminiRubricGrader } from '@tokai/tutor-core/learning';
+import { liveModels, liveModelsConfigured } from './live-models.js';
 import { definition, definitions, enqueueArtifact, metered, optionalResource, type AttemptRecord, type ProductContext } from './product-context.js';
 
 const hash = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -68,8 +69,8 @@ export async function prepareLearningTurn(context: ProductContext, p: Principal,
       const answer = response.answer ?? answerFromTutorInput(def, input.text, input.mode, input.turnId);
       // Structured input is the user's submitted payload, never a model tool argument.
       const submission = { attemptId: stableId('attempt', input.session.id, input.turnId), presentationId: presentation.id, assessmentId: def.id, assessmentVersion: def.version, answer };
-      const grader = input.session.mode === 'live' && (context.providers?.rubric || env.GEMINI_API_KEY && env.GEMINI_MODEL)
-        ? (args: Parameters<ReturnType<typeof createGeminiRubricGrader>>[0]) => metered(context, p, 'model', 1, onUsage => (context.providers?.rubric ?? createGeminiRubricGrader({ apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, onUsage }))(args), { sessionId: input.session.id, traceId: input.turnId }) : undefined;
+      const grader = input.session.mode === 'live' && (context.providers?.rubric || liveModelsConfigured(env))
+        ? (args: Parameters<ReturnType<typeof createGeminiRubricGrader>>[0]) => metered(context, p, 'model', 1, onUsage => (context.providers?.rubric ?? createGeminiRubricGrader({ ...liveModels(env), onUsage }))(args), { sessionId: input.session.id, traceId: input.turnId }) : undefined;
       const signal = AbortSignal.any([AbortSignal.timeout(45000), ...(input.signal ? [input.signal] : [])]);
       const evaluated = await evaluateAttempt(def, presentation.data, submission, { sessionId: input.session.id, evaluationId: stableId('evaluation', input.session.id, input.turnId), now: now(), rubricGrader: grader, signal });
       signal.throwIfAborted(); const result: AttemptRecord = { ...evaluated, fingerprint: hash(submission) };

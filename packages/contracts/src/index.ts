@@ -33,7 +33,7 @@ export const GuestResponseSchema = z.object({ token: z.string(), expiresAt: z.st
 export type GuestResponse = z.infer<typeof GuestResponseSchema>;
 export const CapabilitiesSchema = z.object({ tutor: z.boolean(), speech: z.boolean(), voice: z.boolean().default(false) });
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
-export const ErrorResponseSchema = z.object({ code: z.string(), message: z.string(), requestId: z.string().optional() });
+export const ErrorResponseSchema = z.object({ code: z.string(), message: z.string(), requestId: z.string().optional(), retryable: z.boolean().optional() });
 export type ApiError = z.infer<typeof ErrorResponseSchema>;
 
 export * from './voice';
@@ -45,3 +45,5 @@ export const TOPICS: { id: Topic; title: string; subject: string; description: s
   { id: 'solar-system', title: 'Our neighborhood in space', subject: 'Astronomy', description: 'Explore the planets and the force that keeps them together.', duration: '15 min' },
   { id: 'circuits', title: 'Let’s make a light turn on', subject: 'Physics', description: 'Trace the invisible journey of an electric current.', duration: '12 min' }
 ];
+
+export * from './http';

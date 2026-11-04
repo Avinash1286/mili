@@ -8,7 +8,7 @@ import usageStyles from './UsagePanel.module.css';
 
 function units(kind: UsageKind, amount: number) {
   if (kind === 'transcription') return `${(amount / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} seconds`;
-  if (kind === 'ingestion') return `${(amount / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })} MB`;
+  if (['ingestion', 'storage', 'egress'].includes(kind)) return `${(amount / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })} MiB`;
   return `${amount.toLocaleString()} ${kind === 'speech' ? 'characters' : 'requests'}`;
 }
 
@@ -24,7 +24,7 @@ export function UsagePanel({ load }: { load: () => Promise<UsageSummary> }) {
   useEffect(() => { void refresh(); return () => { request.current++; }; }, [refresh]);
   return <section className={styles.panel} aria-labelledby="usage-heading">
     <h2 id="usage-heading">Your daily learning allowance.</h2>
-    <p className={styles.intro}>These limits cover activity in this Tokai workspace. Provider account credits and invoices are managed in your provider dashboard.</p>
+    <p className={styles.intro}>These limits cover activity in this milli workspace. Provider account credits and invoices are managed in your provider dashboard.</p>
     {pending && !summary && <p role="status">Checking your allowance…</p>}
     {error && <StatusMessage error>We couldn’t refresh your allowance. Your preferences and saved learning remain available.</StatusMessage>}
     {summary && <>
@@ -34,6 +34,14 @@ export function UsagePanel({ load }: { load: () => Promise<UsageSummary> }) {
         <p>{units(item.kind, item.used)} reserved of {units(item.kind, item.limit)} per day.</p>
         {!!item.active && <p>{item.active} request{item.active === 1 ? '' : 's'} currently running.</p>}
       </div>)}</div>
+      {summary.storage && <p className={styles.muted}>Current private files: {(summary.storage.bytes / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })} MiB across {summary.storage.objects.toLocaleString()} files. Storage activity above counts bytes written today; current inventory can include earlier uploads.</p>}
+      {summary.budget?.enabled && <div className={usageStyles.item} style={{ marginTop: 18 }}>
+        <h3>Daily spending reservation</h3>
+        <p>{summary.budget.ownerUsedUsd.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 6 })} reserved for your work{summary.budget.ownerLimitUsd !== undefined ? ` of ${summary.budget.ownerLimitUsd.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 6 })}` : ''}.</p>
+        {summary.budget.ownerRemainingUsd !== undefined && <p>{summary.budget.ownerRemainingUsd.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 6 })} remaining for this learner.</p>}
+        {summary.budget.globalRemainingUsd !== undefined && <p>{summary.budget.globalRemainingUsd.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 6 })} remaining in the shared workspace budget.</p>}
+        <p>Reservations use configured rates and conservative bounds before work starts, including the configured storage period. They are spending controls, not an invoice. Unknown or failed work keeps its reservation.</p>
+      </div>}
       <p className={styles.muted}>Resets at <time dateTime={summary.resetsAt}>{new Date(summary.resetsAt).toLocaleString(undefined, { timeZone: 'UTC' })} UTC</time>. Failed requests keep their reserved units. Saved lessons and guided samples remain available when the allowance is used.</p>
       {summary.pricing === 'configured' && summary.estimatedUsd !== undefined ? <p className={styles.muted}>Estimated provider usage: {summary.estimatedUsd.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}{summary.priceDate ? ` using prices dated ${summary.priceDate}` : ''}. This estimate is separate from your provider invoice.</p> : <p className={styles.muted}>A provider price estimate is not configured.</p>}
       <p className={styles.muted}>{summary.note}</p>

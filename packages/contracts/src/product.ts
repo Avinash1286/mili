@@ -2,7 +2,26 @@ import { z } from './zod-runtime';
 
 const id = z.string().min(1).max(100), instant = z.string().datetime();
 export const SpeechLanguageSchema = z.enum(['english', 'spanish', 'german', 'french', 'italian', 'portuguese']);
-export const TutorVoiceSchema = z.enum(['aai-audrey', 'aai-jane', 'aai-michael']);
+export type SpeechLanguage = z.infer<typeof SpeechLanguageSchema>;
+const VOICE_IDS = ['aai-audrey', 'aai-kyla', 'aai-sara', 'aai-peter', 'aai-titus', 'aai-nancy', 'aai-troy', 'aai-jane', 'aai-michael', 'aai-constanza', 'aai-magdalena', 'aai-donatien', 'aai-benicio'] as const;
+export const TutorVoiceSchema = z.enum(VOICE_IDS);
+export type TutorVoice = (typeof VOICE_IDS)[number];
+/** Curated AssemblyAI voices; each speaks best in its recorded language. */
+export const TUTOR_VOICES: { id: TutorVoice; name: string; description: string; language: z.infer<typeof SpeechLanguageSchema> }[] = [
+  { id: 'aai-audrey', name: 'Audrey', description: 'Calm and steady', language: 'english' },
+  { id: 'aai-kyla', name: 'Kyla', description: 'Bright and quick', language: 'english' },
+  { id: 'aai-sara', name: 'Sara', description: 'Warm and even', language: 'english' },
+  { id: 'aai-peter', name: 'Peter', description: 'Soft-spoken', language: 'english' },
+  { id: 'aai-titus', name: 'Titus', description: 'Deep and relaxed', language: 'english' },
+  { id: 'aai-nancy', name: 'Nancy', description: 'British, even tone', language: 'english' },
+  { id: 'aai-troy', name: 'Troy', description: 'Scottish, gentle', language: 'english' },
+  { id: 'aai-jane', name: 'Jane', description: 'Clear and neutral', language: 'english' },
+  { id: 'aai-michael', name: 'Michael', description: 'Friendly and clear', language: 'english' },
+  { id: 'aai-constanza', name: 'Constanza', description: 'Mexican Spanish', language: 'spanish' },
+  { id: 'aai-magdalena', name: 'Magdalena', description: 'German', language: 'german' },
+  { id: 'aai-donatien', name: 'Donatien', description: 'French', language: 'french' },
+  { id: 'aai-benicio', name: 'Benício', description: 'Portuguese', language: 'portuguese' },
+];
 export const LearnerPreferencesSchema = z.object({
   displayName: z.string().trim().max(80).default(''), level: z.enum(['beginner', 'intermediate', 'advanced']).default('beginner'),
   goal: z.string().trim().max(500).default(''), lessonMinutes: z.number().int().min(5).max(60).default(15),
@@ -24,13 +43,13 @@ export type Citation = z.infer<typeof CitationSchema>;
 export const SourceSchema = z.object({ id, title: z.string().max(200), filename: z.string().max(200), mimeType: z.enum(['application/pdf', 'image/png', 'image/jpeg', 'text/plain']), bytes: z.number().int().positive().max(10 * 1024 * 1024),
   checksum: z.string().regex(/^[a-f0-9]{64}$/), revision: z.number().int().nonnegative(), status: z.enum(['awaiting-upload', 'queued', 'processing', 'ready', 'failed']),
   createdAt: instant, updatedAt: instant, pages: z.number().int().nonnegative().optional(), chunks: z.number().int().nonnegative().optional(), error: z.string().max(500).optional(),
-  parserVersion: z.string().max(100).optional(), embeddingModel: z.string().max(120).optional(),
+  parserVersion: z.string().max(100).optional(), embeddingModel: z.string().max(120).optional(), fileExpiresAt: instant.optional(),
 }).strict();
 export type Source = z.infer<typeof SourceSchema>;
 export const UploadIntentSchema = SourceSchema.pick({ title: true, filename: true, mimeType: true, bytes: true, checksum: true });
 export const ArtifactSchema = z.object({ id, sessionId: id, kind: z.enum(['study-pack', 'recap', 'export', 'cards', 'assessment']), format: z.enum(['markdown', 'pdf', 'csv', 'json', 'wav']).optional(),
   status: z.enum(['queued', 'running', 'ready', 'failed']), revision: z.number().int().nonnegative(), createdAt: instant, updatedAt: instant, error: z.string().max(500).optional(),
-  durationMs: z.number().nonnegative().optional(), captions: z.array(z.object({ text: z.string().max(200), startMs: z.number().nonnegative(), endMs: z.number().nonnegative() }).strict()).max(1500).optional(),
+  durationMs: z.number().nonnegative().optional(), fileExpiresAt: instant.optional(), captions: z.array(z.object({ text: z.string().max(200), startMs: z.number().nonnegative(), endMs: z.number().nonnegative() }).strict()).max(1500).optional(),
 }).strict();
 export type Artifact = z.infer<typeof ArtifactSchema>;
 export const SessionSettingsSchema = z.object({ preferences: LearnerPreferencesSchema, goal: z.string().trim().max(500), sourceIds: z.array(id).max(8), grounding: z.enum(['general', 'sources-only']) }).strict();

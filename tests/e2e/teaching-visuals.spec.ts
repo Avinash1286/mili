@@ -10,7 +10,12 @@ async function startOutput(page: Page, events: TransportEvent[]) {
   await page.getByRole('button', { name: 'Start without microphone', exact: true }).click();
   await expect.poll(() => events.some(event => event.type === 'session.ready')).toBe(true);
 }
+async function editBoard(page: Page) {
+  const toggle = page.getByRole('button', { name: 'Edit board', exact: true });
+  if (await toggle.getAttribute('aria-pressed') !== 'true') await toggle.click();
+}
 async function addStudentShape(page: Page, label = 'My energy model') {
+  await editBoard(page);
   await page.getByRole('button', { name: 'Add shape', exact: true }).click();
   await page.getByRole('combobox', { name: 'Shape type', exact: true }).selectOption('rectangle');
   await page.getByLabel('Label', { exact: true }).fill(label);
@@ -42,12 +47,13 @@ test('student semantic shapes support keyboard movement, undo, persistence, grou
   await expect(page.locator('.message-tutor').last()).toContainText('My retained note');
   await page.getByRole('button', { name: 'Delete selected shapes', exact: true }).click();
   await expect(node).toHaveCount(0);
+  await editBoard(page);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(node).toBeVisible();
   await page.getByLabel('Board export and reset').click();
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export SVG', exact: true }).click();
-  expect((await downloaded).suggestedFilename()).toBe('tokai-board.svg');
+  expect((await downloaded).suggestedFilename()).toBe('milli-board.svg');
   await page.getByLabel('Board export and reset').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Whiteboard', exact: true }).click();

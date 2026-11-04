@@ -84,7 +84,7 @@ export function exportBoardSvg(board: Board, ids?: string[], frameId?: string): 
     const { x1, y1, x2, y2 } = connectorAnchors(a, b);
     return `<path d="M ${x1} ${y1} L ${x2} ${y2}" stroke="#9eaf91" stroke-width="2" marker-end="url(#arrow)"/>${textMarkup(edge.label ?? '', (x1 + x2) / 2, (y1 + y2) / 2 - 8, 25, 12, '#657a55', 1)}`;
   }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" role="img"><title>Tokai editable lesson board</title><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 7 4 0 7" fill="none" stroke="#9eaf91"/></marker></defs><rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="#fffef9"/>${edges}${nodes.map(nodeMarkup).join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" role="img"><title>milli lesson board</title><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 7 4 0 7" fill="none" stroke="#9eaf91"/></marker></defs><rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="#fffef9"/>${edges}${nodes.map(nodeMarkup).join('')}</svg>`;
 }
 export async function boardPng(board: Board, ids?: string[], frameId?: string): Promise<{ data: string; url: string }> {
   const svg = exportBoardSvg(board, ids, frameId), bounds = boardBounds(board, ids, frameId), scale = Math.min(1, 1024 / Math.max(bounds.width, bounds.height));

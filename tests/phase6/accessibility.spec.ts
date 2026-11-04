@@ -17,7 +17,7 @@ for (const route of ['/', '/learn/new', '/dashboard', '/library', '/settings', '
   });
 }
 
-for (const tab of ['Conversation', 'Concepts', 'Cards', 'Practice']) {
+for (const tab of ['Conversation', 'Concepts', 'Practice']) {
   test(`lesson ${tab} surface has accessible names and contrast`, async ({ page }, info) => {
     const transport = await fixtureTransport(page);
     await openLiveLesson(page);

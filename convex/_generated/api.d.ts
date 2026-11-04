@@ -22,6 +22,7 @@ import type * as store from "../store.js";
 import type * as tickets from "../tickets.js";
 import type * as transfers from "../transfers.js";
 import type * as usage from "../usage.js";
+import type * as usage_migration from "../usage_migration.js";
 
 import type {
   ApiFromModules,
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   tickets: typeof tickets;
   transfers: typeof transfers;
   usage: typeof usage;
+  usage_migration: typeof usage_migration;
 }>;
 
 /**

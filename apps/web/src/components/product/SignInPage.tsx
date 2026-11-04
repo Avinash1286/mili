@@ -23,7 +23,7 @@ export function SignInPage() {
     } catch (e) { setError(errorText(e)); setBusy(false); }
   }
   async function providerSignIn() { setBusy(true); setError(''); try { window.location.assign(await api.login()); } catch (e) { setError(errorText(e)); setBusy(false); } }
-  return <ProductShell title="Keep your learning with you." eyebrow="YOUR ACCOUNT" description="Sign in to return to your saved lessons. Your current guest learning joins your account when you sign in.">
+  return <ProductShell title="Sign in" description="Your guest lessons move to your account.">
     {error && <StatusMessage error>{error}{!capabilities && <button className={styles.secondary} disabled={loading} onClick={() => void load()}>Retry sign-in options</button>}</StatusMessage>}
     {loading ? <p role="status">Checking sign-in options…</p> : <>
       {capabilities?.native && <section className={styles.panel}><h2>{mode === 'sign-up' ? 'Create your learning account.' : 'Welcome back.'}</h2>

@@ -41,8 +41,27 @@ describe.skipIf(!enabled)('actual local Convex integration', () => {
     await store.chunks.replace(p, id, 0, [{ id: randomUUID(), sourceId: id, revision: 0, ordinal: 0, text: 'chloroplast sunlight private evidence', page: 2, embedding }]);
     expect((await store.chunks.search(p, { sourceIds: [id], embedding }))[0]).toMatchObject({ sourceId: id, page: 2 }); expect((await store.chunks.search(p, { sourceIds: [id], text: 'chloroplast' }))[0].text).toContain('chloroplast'); await expect(store.chunks.search(other, { sourceIds: [id], embedding })).rejects.toMatchObject({ status: 404 });
   });
-  it('uses real private native storage and cleans deleted files', async () => { const key = `tests/${randomUUID()}.txt`; try { const metadata = await files.put(key, Buffer.from('private native file'), 'text/plain'); expect(metadata.size).toBe(19); expect((await files.get(key)).body.toString()).toBe('private native file'); await expect(files.get(key, { maxBytes: 2 })).rejects.toMatchObject({ code: 'OBJECT_TOO_LARGE' }); await files.delete(key); await expect(files.head(key)).rejects.toMatchObject({ status: 404 }); } finally { await files.delete(key); } });
+  it('uses real owner-attributed private storage, rejects another owner and cleans deleted files', async () => {
+    const id = randomUUID(), key = `source/${id}`;
+    const usage = () => store.transport.call<any>('query', 'usage:summary', { principal: p });
+    const before = await usage();
+    await store.resources.put(p, 'source', id, { title: 'Private native storage test' }, { expectedRevision: -1 });
+    try {
+      const metadata = await files.put(key, Buffer.from('private native file'), 'text/plain', { principal: p });
+      expect(metadata.size).toBe(19); expect((await files.get(key, { principal: p })).body.toString()).toBe('private native file');
+      expect(metadata.expiresAt).toBe(p.expiresAt);
+      await expect(files.get(key, { principal: other })).rejects.toMatchObject({ status: 404 });
+      await expect(files.get(key, { principal: p, maxBytes: 2 })).rejects.toMatchObject({ code: 'OBJECT_TOO_LARGE' });
+      const measured = await usage();
+      expect(measured.storage.bytes).toBe(before.storage.bytes + 19); expect(measured.storage.objects).toBe(before.storage.objects + 1);
+      expect(measured.kinds.find((entry: any) => entry.kind === 'storage').totals.storageBytesWritten).toBe((before.kinds.find((entry: any) => entry.kind === 'storage').totals.storageBytesWritten ?? 0) + 19);
+      expect(measured.kinds.find((entry: any) => entry.kind === 'egress').totals.egressBytesPrepared).toBe((before.kinds.find((entry: any) => entry.kind === 'egress').totals.egressBytesPrepared ?? 0) + 19);
+      await files.delete(key); await expect(files.head(key)).rejects.toMatchObject({ status: 404 });
+      expect((await usage()).storage.bytes).toBe(before.storage.bytes);
+    } finally { await files.delete(key); await store.resources.delete(p, 'source', id); }
+  });
   it('transfers more than4.5MB privately, rejects reuse and invalidates a changed download', async () => {
+    const before = await store.transport.call<any>('query', 'usage:summary', { principal: p });
     const id = randomUUID(), bytes = Buffer.alloc(6 * 1024 * 1024, 32); bytes.write('%PDF-1.7\n');
     const checksum = createHash('sha256').update(bytes).digest('hex'), data = { status: 'awaiting-upload', bytes: bytes.length, mimeType: 'application/pdf', checksum, filename: 'private.pdf' };
     await store.resources.put(p, 'source', id, data, { expectedRevision: -1 });
@@ -59,8 +78,33 @@ describe.skipIf(!enabled)('actual local Convex integration', () => {
       expect((await fetch(download.url, { headers: { ...download.headers, Origin: 'http://localhost:3000' } })).status).toBe(401);
       const stale = await files.createTransfer(p, { kind: 'source', id, operation: 'download' }); await store.resources.put(p, 'source', id, { ...data, status: 'ready' }, { expectedRevision: 0 });
       expect((await fetch(stale.url, { headers: { ...stale.headers, Origin: 'http://localhost:3000' } })).status).toBe(409);
+      const measured = await store.transport.call<any>('query', 'usage:summary', { principal: p });
+      expect(measured.kinds.find((entry: any) => entry.kind === 'storage').totals.storageBytesWritten).toBe((before.kinds.find((entry: any) => entry.kind === 'storage').totals.storageBytesWritten ?? 0) + bytes.length);
+      expect(measured.kinds.find((entry: any) => entry.kind === 'egress').totals.egressBytesPrepared).toBe((before.kinds.find((entry: any) => entry.kind === 'egress').totals.egressBytesPrepared ?? 0) + bytes.length);
     } finally { await files.delete(`source/${id}`); await store.resources.delete(p, 'source', id); }
   }, 30000);
+  it('preserves private file access and inventory through guest claim, then consistently rejects expired downloads', async () => {
+    const guest = await store.authenticate((await store.createGuest()).token), { principal: account } = await store.createUser({ issuer: 'urn:tokai:file-claim-test', subject: randomUUID() });
+    const id = randomUUID(), key = `source/${id}`, bytes = Buffer.from('Private claimed file.'), data = { status: 'ready', filename: 'claimed.txt', mimeType: 'text/plain', bytes: bytes.length, checksum: createHash('sha256').update(bytes).digest('hex') };
+    const summary = (principal: Principal) => store.transport.call<any>('query', 'usage:summary', { principal });
+    try {
+      await store.resources.put(guest, 'source', id, data, { expectedRevision: -1 });
+      const original = await files.put(key, bytes, 'text/plain', { principal: guest });
+      expect((await summary(guest)).storage).toEqual({ bytes: bytes.length, objects: 1 });
+      await store.claimGuest(guest, account);
+      expect((await files.get(key, { principal: account })).body.equals(bytes)).toBe(true);
+      expect((await files.head(key)).expiresAt).toBe(original.expiresAt);
+      await expect(files.get(key, { principal: guest })).rejects.toMatchObject({ status: 401 });
+      expect((await summary(account)).storage).toEqual({ bytes: bytes.length, objects: 1 });
+      const current = await store.resources.get(account, 'source', id);
+      await store.resources.put(account, 'source', id, { ...data, fileExpiresAt: new Date(Date.now() - 1000).toISOString() }, { expectedRevision: current.revision });
+      await expect(files.createTransfer(account, { kind: 'source', id, operation: 'download' })).rejects.toMatchObject({ status: 410, code: 'OBJECT_EXPIRED' });
+      await files.delete(key);
+      await expect(files.createTransfer(account, { kind: 'source', id, operation: 'download' })).rejects.toMatchObject({ status: 410, code: 'OBJECT_EXPIRED' });
+      await expect(files.createTransfer(other, { kind: 'source', id, operation: 'download' })).rejects.toMatchObject({ status: 404 });
+      expect((await summary(account)).storage).toEqual({ bytes: 0, objects: 0 });
+    } finally { await files.delete(key); await store.deleteOwner(account); }
+  });
   it('atomically fences competing owners and rejects stale writes', async () => { const manager = new ConvexLeaseManager(ServiceTransport.fromEnv(process.env)), key = `test:${randomUUID()}`, value = lesson(); await store.create(p, value); const first = await manager.acquire(key); expect(first).toBeDefined(); expect(await manager.acquire(key)).toBeUndefined(); await manager.release(first!); const second = await manager.acquire(key); expect(second!.fence).toBeGreaterThan(first!.fence); await expect(store.save(p, { ...value, revision: 1 }, { lease: { key, fence: first!.fence } })).rejects.toMatchObject({ code: 'LEASE_LOST' }); await store.save(p, { ...value, revision: 1 }, { lease: { key, fence: second!.fence } }); await manager.release(second!); });
   it('resolves only live explicitly shared parent records', async () => { const value = lesson(), hash = createHash('sha256').update(randomUUID()).digest('hex'); await store.create(p, value); await store.resources.put(p, 'share', hash, { expiresAt: new Date(Date.now() + 60000).toISOString(), revoked: false }, { expectedRevision: -1, sessionId: value.id }); expect((await store.resolveShare(hash))?.principal.ownerId).toBe(p.ownerId); await store.resources.put(p, 'share', hash, { expiresAt: new Date(Date.now() + 60000).toISOString(), revoked: true }, { expectedRevision: 0 }); expect(await store.resolveShare(hash)).toBeUndefined(); });
   it('imports a legacy token hash idempotently and preserves guest access', async () => {

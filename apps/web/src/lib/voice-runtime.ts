@@ -1,4 +1,4 @@
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection, type PracticeResponse } from '@tokai/contracts';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceCommand, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection, type PracticeResponse } from '@tokai/contracts';
 import { api, errorText, RequestError, voiceSocketUrl } from './api';
 
 export type VoiceView = {
@@ -8,9 +8,12 @@ export type VoiceView = {
   metrics?: { llmMs: number; firstAudioMs?: number; inputAudioMs: number; outputAudioMs: number };
   audibleMs?: number;
   beatId?: string; highlightNodeIds: string[];
+  /** Words of the current spoken reply and the index being spoken; empty when timings are unavailable. */
+  words: string[]; wordIndex: number;
 };
-export const initialVoiceView: VoiceView = { state: 'idle', connected: false, microphone: false, recording: false, handsFree: false, partial: '', caption: '', error: '', notice: '', devices: [], deviceId: '', level: 0, highlightNodeIds: [] };
-type OutputStream = { epoch: number; seq: number; played: number; messageId: string; beatId?: string; text?: string; highlightNodeIds?: string[]; visualReady?: boolean };
+export const initialVoiceView: VoiceView = { state: 'idle', connected: false, microphone: false, recording: false, handsFree: false, partial: '', caption: '', error: '', notice: '', devices: [], deviceId: '', level: 0, highlightNodeIds: [], words: [], wordIndex: -1 };
+type TimedWord = { text: string; startMs: number; endMs: number };
+type OutputStream = { epoch: number; seq: number; played: number; messageId: string; beatId?: string; text?: string; highlightNodeIds?: string[]; visualReady?: boolean; words?: TimedWord[]; ackMs?: number; ackAt?: number };
 
 /** One owner for browser media, network and cancellation. No provider credentials. */
 export class VoiceRuntime {
@@ -27,6 +30,8 @@ export class VoiceRuntime {
   private utteranceTimer?: ReturnType<typeof setTimeout>; private inputReadyTimer?: ReturnType<typeof setTimeout>; private speechFrames = 0; private silentFrames = 0;
   private preroll: Int16Array[] = []; private selectedNodeId?: string; private intentionalClose = false;
   private finalizedAt?: number;
+  private speakingStream?: number; private wordTicker?: ReturnType<typeof setInterval>;
+  private answering?: string;
   private selection?: SelectionContext;
   private beats = new Map<string, { text: string; messageId: string; highlightNodeIds: string[] }>();
   private readyBeats = new Set<string>();
@@ -36,10 +41,20 @@ export class VoiceRuntime {
   onSession: (session: Session) => void = () => {};
   onBoard: (board: Board, beatId?: string, signal?: AbortSignal, map?: ConceptMap, focusIds?: string[], spatialState?: SpatialSelection, visualSurface?: 'board' | 'spatial') => Promise<boolean> = async () => false;
   onMap: (map: ConceptMap) => void = () => {};
+  onCommand: (command: VoiceCommand) => void = () => {};
   constructor(private readonly sessionId: string) {}
   getSnapshot = () => this.view;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
   private update(patch: Partial<VoiceView>) { this.view = { ...this.view, ...patch }; this.listeners.forEach(fn => fn()); }
+  private clearWords() { clearInterval(this.wordTicker); this.wordTicker = undefined; this.speakingStream = undefined; if (this.view.words.length || this.view.wordIndex !== -1) this.update({ words: [], wordIndex: -1 }); }
+  private tickWords() {
+    const stream = this.speakingStream === undefined ? undefined : this.streams.get(this.speakingStream);
+    if (!stream?.words?.length || stream.ackAt === undefined) return;
+    const playedMs = (stream.ackMs ?? 0) + Math.min(400, performance.now() - stream.ackAt);
+    let index = -1; for (let i = 0; i < stream.words.length; i++) if (stream.words[i]!.startMs <= playedMs) index = i; else break;
+    const words = stream.words.map(word => word.text);
+    if (index !== this.view.wordIndex || words.length !== this.view.words.length) this.update({ words, wordIndex: index });
+  }
   private send(event: VoiceClientEvent) { if (this.socket?.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify(event)); return true; } return false; }
   select(id?: string, selection?: SelectionContext) { this.selectedNodeId = id; this.selection = selection; if (this.view.connected) this.send({ type: 'selection.update', selectedNodeId: id, selection }); }
   boardOperation(transaction: BoardTransaction): Promise<Board> {
@@ -95,7 +110,7 @@ export class VoiceRuntime {
     this.playback?.port.postMessage({ type: 'clear', epoch: 0 });
     for (const prepare of this.visualPrepares.values()) prepare.abort(); this.visualPrepares.clear();
     for (const request of this.boardRequests.values()) { clearTimeout(request.timer); request.reject(new Error('Voice reconnected before this save was acknowledged. Reload before retrying.')); } this.boardRequests.clear();
-    this.streams.clear(); this.beats.clear(); this.readyBeats.clear(); this.finalizedAt = undefined;
+    this.streams.clear(); this.beats.clear(); this.readyBeats.clear(); this.finalizedAt = undefined; this.clearWords();
     this.connectionId = undefined; this.lastServerSeq = -1; this.epoch = 0; this.blockedEpoch = -1;
     const abort = new AbortController(); this.connectAbort?.abort(); this.connectAbort = abort;
     try { await this.connectSocket(generation, abort.signal); } catch (error) { if (generation === this.generation) this.fail(errorText(error)); }
@@ -149,7 +164,9 @@ export class VoiceRuntime {
   }
   async changeDevice(id: string) { try { await this.enableMicrophone(id); } catch (e) { this.update({ notice: microphoneError(e) }); } }
   handsFree(enabled: boolean) { if (!this.view.microphone) return; if (!enabled) this.endTalking(); this.speechFrames = 0; this.silentFrames = 0; this.preroll = []; this.update({ handsFree: enabled }); }
-  beginTalking = (answeringPresentationId?: string) => {
+  /** The next spoken utterance answers this presented tutor question. */
+  setAnswering(presentationId?: string) { this.answering = presentationId; }
+  beginTalking = (answeringPresentationId: string | undefined = this.answering) => {
     if (!this.view.connected || !this.view.microphone || this.talking || this.ending || this.inputPendingEnd) return;
     this.interrupt('speech'); this.inputStream++; this.inputSeq = 0; this.talking = true; this.ending = false;
     this.inputReady = false; this.inputPending = []; this.inputPendingEnd = false;
@@ -193,6 +210,7 @@ export class VoiceRuntime {
     for (const prepare of this.visualPrepares.values()) prepare.abort(); this.visualPrepares.clear();
     this.playback?.port.postMessage({ type: 'clear', epoch: this.epoch + 1 });
     this.send({ type: 'input.interrupt', outputEpoch: this.epoch, reason });
+    this.clearWords();
     this.update({ state: 'interrupted', caption: '', highlightNodeIds: [], beatId: undefined });
   }
   text(text: string, selectedNodeId?: string, selection?: SelectionContext, practiceResponse?: PracticeResponse) {
@@ -260,13 +278,21 @@ export class VoiceRuntime {
       case 'session.state': this.update({ state: event.state }); break;
       case 'transcript.partial': this.update({ partial: event.text, state: 'recognizing' }); break;
       case 'transcript.final': this.finalizedAt = performance.now(); this.update({ partial: '', state: 'thinking', audibleMs: undefined }); break;
+      case 'ui.command': this.finalizedAt = undefined; this.update({ partial: '', state: 'listening', notice: `Heard “${event.text}”` }); this.onCommand(event.command); break;
       case 'tutor.beat': if (event.outputEpoch > this.blockedEpoch) { if (event.beatId) { this.beats.set(event.beatId, { text: event.text, messageId: event.messageId, highlightNodeIds: event.highlightNodeIds ?? [] }); if (this.beats.size > 50) this.beats.delete(this.beats.keys().next().value!); } else this.update({ caption: event.text, messageId: event.messageId }); } break;
       case 'audio.start':
         if (event.outputEpoch <= this.blockedEpoch) return;
         this.streams.set(event.streamId, { epoch: event.outputEpoch, seq: 0, played: 0, messageId: event.messageId, beatId: event.beatId, ...this.beats.get(event.beatId ?? ''), visualReady: event.visualReady !== false });
         this.playback?.port.postMessage({ type: 'start', epoch: event.outputEpoch, streamId: event.streamId, ready: event.visualReady === false || !event.beatId || this.readyBeats.has(event.beatId) }); break;
       case 'audio.end': this.playback?.port.postMessage({ type: 'end', epoch: event.outputEpoch, streamId: event.streamId }); break;
-      case 'audio.cancel': this.playback?.port.postMessage({ type: 'clear', epoch: event.outputEpoch }); this.update({ state: 'interrupted', caption: '', highlightNodeIds: [], beatId: undefined }); break;
+      case 'audio.words': {
+        const stream = this.streams.get(event.streamId);
+        if (!stream || stream.epoch !== event.outputEpoch || event.outputEpoch <= this.blockedEpoch) break;
+        stream.words = [...(stream.words ?? []), ...event.words].sort((a, b) => a.startMs - b.startMs).slice(0, 2000);
+        if (this.speakingStream === event.streamId) this.tickWords();
+        break;
+      }
+      case 'audio.cancel': this.clearWords(); this.playback?.port.postMessage({ type: 'clear', epoch: event.outputEpoch }); this.update({ state: 'interrupted', caption: '', highlightNodeIds: [], beatId: undefined }); break;
       case 'voice.metrics': this.update({ metrics: { llmMs: event.llmMs, firstAudioMs: event.firstAudioMs, inputAudioMs: event.inputAudioMs, outputAudioMs: event.outputAudioMs } }); break;
       case 'error': {
         const request = event.operationId ? this.boardRequests.get(event.operationId) : undefined;
@@ -281,15 +307,18 @@ export class VoiceRuntime {
     if (data.type === 'overflow') { this.interrupt(); this.update({ error: 'Playback fell too far behind. The tutor was stopped; please ask it to repeat a shorter explanation.' }); return; }
     if (data.type !== 'ack') return;
     const stream = this.streams.get(data.streamId); if (!stream || data.outputEpoch !== stream.epoch) return;
-    if (data.playedSamples < stream.played) return; stream.played = data.playedSamples;
+    if (data.playedSamples < stream.played) return; stream.played = data.playedSamples; stream.ackMs = data.playedSamples / 24; stream.ackAt = performance.now();
     this.send({ type: 'playback.ack', outputEpoch: data.outputEpoch, streamId: data.streamId, playedSamples: data.playedSamples, status: data.status });
     if (data.outputEpoch === this.epoch && data.outputEpoch > this.blockedEpoch) {
       if (data.status === 'started' && this.finalizedAt !== undefined) { this.update({ audibleMs: Math.round(performance.now() - this.finalizedAt) }); this.finalizedAt = undefined; }
-      if (data.status === 'started') this.update({ caption: stream.text ?? this.view.caption, messageId: stream.messageId, beatId: stream.beatId, highlightNodeIds: stream.visualReady ? stream.highlightNodeIds ?? [] : [] });
+      if (data.status === 'started') {
+        this.clearWords(); this.speakingStream = data.streamId; this.wordTicker = setInterval(() => this.tickWords(), 60);
+        this.update({ caption: stream.text ?? this.view.caption, messageId: stream.messageId, beatId: stream.beatId, highlightNodeIds: stream.visualReady ? stream.highlightNodeIds ?? [] : [] });
+      }
       if (data.status === 'started' || data.status === 'progress') this.update({ state: 'speaking' });
-      if (data.status === 'completed') this.update({ state: 'listening', caption: '', highlightNodeIds: [] });
+      if (data.status === 'completed') { this.clearWords(); this.update({ state: 'listening', caption: '', highlightNodeIds: [] }); }
     }
-    if (data.status === 'completed' || data.status === 'interrupted') this.streams.delete(data.streamId);
+    if (data.status === 'completed' || data.status === 'interrupted') { if (this.speakingStream === data.streamId) this.clearWords(); this.streams.delete(data.streamId); }
   }
   stop(state: VoiceState = 'idle') {
     this.intentionalClose = true; this.generation++; clearInterval(this.heartbeat); clearTimeout(this.connectTimer); clearTimeout(this.utteranceTimer); clearTimeout(this.inputReadyTimer);
@@ -303,7 +332,7 @@ export class VoiceRuntime {
     this.disableMicrophone();
     if (this.playback) { this.playback.port.onmessage = null; this.playback.port.close(); this.playback.disconnect(); this.playback = undefined; }
     const context = this.context; this.context = undefined; if (context && context.state !== 'closed') void context.close().catch(() => {});
-    this.streams.clear(); this.connectionId = undefined; this.finalizedAt = undefined;
+    this.streams.clear(); this.connectionId = undefined; this.finalizedAt = undefined; this.clearWords();
     this.update({ state, connected: false, recording: false, microphone: false, handsFree: false, partial: '', caption: '', level: 0, highlightNodeIds: [], beatId: undefined });
   }
   pauseForVisibility() { if (this.view.connected || ['connecting', 'reconnecting'].includes(this.view.state)) { this.stop('paused'); this.update({ notice: 'Voice paused because this page was hidden. Reconnect when you’re ready.' }); } }

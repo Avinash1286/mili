@@ -30,9 +30,13 @@
     "eval:tutor": "tsx scripts/evaluate-learning.ts",
     "verify:capacity": "tsx scripts/verify-capacity.ts",
     "verify:restore": "tsx scripts/verify-restore.ts",
+    "verify:voice-soak": "node --expose-gc --import tsx scripts/verify-voice-soak.ts",
+    "verify:usage": "tsx scripts/verify-usage.ts",
     "build:native": "tsx infra/deploy/build-api.ts",
     "verify:native": "tsx infra/deploy/verify-native.ts",
-    "check:secrets": "tsx scripts/check-secrets.ts"
+    "check:secrets": "tsx scripts/check-secrets.ts",
+    "api:spec": "tsx scripts/generate-openapi.ts",
+    "api:spec:check": "tsx scripts/generate-openapi.ts --check"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

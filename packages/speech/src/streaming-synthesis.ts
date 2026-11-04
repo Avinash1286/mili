@@ -147,7 +147,7 @@ function startRequest(input: SynthesizerInput, voiceId: string, text: string, op
         const info = sessionInfo(frame), c = info.configuration;
         if (c.sample_rate !== TTS_SAMPLE_RATE || c.encoding !== 'pcm_s16le' || c.model !== 'assemblyai-tts-1'
             || c.language !== (input.language ?? 'english') || typeof c.voice_id !== 'string' || c.voice_id.toLowerCase() !== voiceId.toLowerCase()
-            || c.word_boundaries !== true || !record(c.limits)) throw protocolError();
+            || c.word_boundaries !== undefined && typeof c.word_boundaries !== 'boolean' || !record(c.limits)) throw protocolError();
         const maxText = c.limits.max_generate_text_length, maxBuffered = c.limits.text_max_buffer_chars;
         if (!nonnegativeInteger(maxText) || maxText < 1 || !nonnegativeInteger(maxBuffered) || maxBuffered < 1) throw protocolError();
         if ([...text].length > Math.min(maxText, maxBuffered)) throw new SpeechError('limit-exceeded', 'The speech text exceeds the negotiated provider limit.');
@@ -182,17 +182,17 @@ function startRequest(input: SynthesizerInput, voiceId: string, text: string, op
         // Termination drains pending (best-effort) boundaries; don't require a boundary frame.
         terminating = true; sendJson(ws, { type: 'Terminate' });
       } else if (frame.type === 'WordBoundaries') {
+        // Word timings are best-effort: ignore a missing, duplicate or malformed frame and keep the audio.
         if (!flushed || boundariesSeen || frame.flush_id !== 0 || !nonnegativeInteger(frame.audio_start_ms)
-            || !Array.isArray(frame.words) || frame.words.length > 2000) throw protocolError();
+            || !Array.isArray(frame.words) || frame.words.length > 2000) return;
         const start = frame.audio_start_ms;
-        const words = frame.words.map((word: unknown) => {
-          if (!record(word) || typeof word.word !== 'string' || word.word.length > 4000
-              || !nonnegativeInteger(word.start) || !nonnegativeInteger(word.end) || word.start < start || word.end < word.start
-              || word.end - start > totalBytes * 1000 / (TTS_SAMPLE_RATE * 2) + 100
-              || typeof word.confidence !== 'number' || !Number.isFinite(word.confidence) || word.confidence < 0 || word.confidence > 1) throw protocolError();
-          return { word: word.word, startMs: word.start, endMs: word.end, confidence: word.confidence };
-        });
+        const valid = (word: unknown): word is { word: string; start: number; end: number; confidence: number } => record(word) && typeof word.word === 'string' && word.word.length <= 4000
+          && nonnegativeInteger(word.start) && nonnegativeInteger(word.end) && word.start >= start && word.end >= word.start
+          && word.end - start <= totalBytes * 1000 / (TTS_SAMPLE_RATE * 2) + 100
+          && typeof word.confidence === 'number' && Number.isFinite(word.confidence) && word.confidence >= 0 && word.confidence <= 1;
         boundariesSeen = true;
+        if (!frame.words.every(valid)) return;
+        const words = frame.words.map((word: { word: string; start: number; end: number; confidence: number }) => ({ word: word.word, startMs: word.start, endMs: word.end, confidence: word.confidence }));
         input.onBoundaries?.({ ...identity, audioStartMs: start, words });
       } else if (frame.type === 'Termination') {
         if (!flushed) throw protocolError();

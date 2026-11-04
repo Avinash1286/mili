@@ -53,6 +53,8 @@ Native accounts use the maintained Convex Better Auth component, with the existi
 
 Current compatible pins are `@convex-dev/better-auth0.12.7` and `better-auth1.6.34`. The current upstream vulnerability audit includes advisories for optional flows; the release uses an explicit HTTP capability allowlist and regression tests for disabled routes rather than an unsupported1.7.x component combination. This is a documented scoped exception, **not a claim that the pinned library has no advisories**. Only password signup/signin/signout, session and Convex token/JWKS discovery endpoints are enabled. Magic-link, social/Generic OAuth/OAuth Proxy, device authorization, password recovery and passkeys are not enabled. Recheck component compatibility and advisories before changing these capabilities. [Convex integration](https://labs.convex.dev/better-auth/framework-guides/next), [Better Auth password behavior](https://better-auth.com/docs/authentication/email-password).
 
+The exact advisories, disabled surfaces, regression evidence and review deadline are in [the dependency review](phase-6-auth-dependency-review.md).
+
 ## Release procedure
 
 1. Pass local typecheck, unit, build, browser, real Convex ownership/storage/auth/voice tests and the secret scan. Commit and push Phase6 first. Preserve the commit ID as the release source.
@@ -86,5 +88,7 @@ Required on the actual preview:
 - Actual WebSocket upgrade, single-use ticket rejection and a connection across the platform lifetime with planned rotation/reconnect. Verify no stale audio/visual commit and no replay.
 - One bounded live Gemini turn and one brief AssemblyAI output using existing free account credentials, with no automatic retry or model upgrade. Keep this evidence separate from fixture tests.
 - Stale/revoked identity and deletion/worker races, quota denial, protected preview callback authentication, and cleanup of the isolated probe's private data.
+
+`pnpm exec tsx infra/deploy/verify-hosted.ts --run --voice-rotation` runs the provider-free transfer/native/PDF/transport checks against the configured preview. It creates and deletes only its own guest owner; the live-mode transport lesson is explicitly a synthetic test seed, and no model or speech request is sent. Keep the separately authorized live-provider proof distinct. Add `--production` only for the approved final production verification. Reports contain metadata only and remain in ignored `.tokai/cloud`.
 
 If the account's current Beta/runtime limits prevent a complete free deployment, record the exact platform failure and preserve the working local implementation. Do not silently remove voice/native processing or purchase another hosting destination.

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { DictationRequestSchema } from '@tokai/contracts';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { FastifyInstance } from 'fastify';
 import { StoreError } from '@tokai/db';
@@ -10,7 +10,7 @@ export async function registerDictation(app: FastifyInstance, context: ProductCo
   const active = new Map<string, AbortController>();
   app.addHook('onClose', async () => { for (const controller of active.values()) controller.abort(); });
   app.post('/v1/dictation', { bodyLimit: 1300000, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const p = await principal(request, context.store), input = parse(z.object({ pcm: z.string().min(4).max(1280000).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/), sampleRate: z.literal(16000) }).strict(), request.body);
+    const p = await principal(request, context.store), input = parse(DictationRequestSchema, request.body);
     const pcm = Buffer.from(input.pcm, 'base64');
     if (!pcm.length || pcm.length % 2 || pcm.length > 16000 * 2 * 30) throw new StoreError(400, 'INVALID_AUDIO', 'Dictation accepts up to 30 seconds of mono PCM16 audio.');
     if (!context.env.ASSEMBLYAI_API_KEY) throw new StoreError(503, 'DICTATION_UNAVAILABLE', 'Speech recognition is not configured. You can type your answer.');

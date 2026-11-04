@@ -60,7 +60,7 @@ export async function openLiveLesson(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^Live AI/ })).toBeEnabled();
   await page.getByRole('button', { name: /^Live AI/ }).click();
-  await page.getByRole('button', { name: /Explore photosynthesis/ }).click();
+  await page.getByRole('button', { name: /^Photosynthesis/ }).click();
   await expect(page).toHaveURL(/\/learn\//);
   await expect(page.getByRole('button', { name: 'Start voice', exact: true })).toBeEnabled();
 }

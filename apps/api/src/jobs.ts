@@ -1,5 +1,5 @@
+import { JobExecutionSchema } from '@tokai/contracts';
 import { timingSafeEqual } from 'node:crypto';
-import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { Artifact, Source } from '@tokai/contracts';
 import { StoreError, type JobRecord } from '@tokai/db';
@@ -16,7 +16,7 @@ export async function registerJobs(app: FastifyInstance, context: ProductContext
   };
   app.post('/internal/jobs/execute', { bodyLimit: 2048, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     if (!authorized(typeof request.headers['x-tokai-job-secret'] === 'string' ? request.headers['x-tokai-job-secret'] : undefined)) throw new StoreError(401, 'UNAUTHORIZED', 'A valid job credential is required.');
-    const input = parse(z.object({ jobId: z.string().min(1).max(100), workerId: z.string().min(1).max(100), fence: z.number().int().positive() }).strict(), request.body);
+    const input = parse(JobExecutionSchema, request.body);
     const job = await context.store.outbox.get(input.jobId);
     if (!job || job.state !== 'running' || job.workerId !== input.workerId || job.fence !== input.fence || !job.lockedUntil || Date.parse(job.lockedUntil) <= Date.parse(context.now())) throw new StoreError(409, 'STALE_JOB', 'This job lease is no longer active.');
     if (active.has(job.id) || active.size >= 2) throw new StoreError(429, 'WORKER_BUSY', 'The local worker is at capacity.');

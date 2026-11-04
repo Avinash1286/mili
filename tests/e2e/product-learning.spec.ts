@@ -155,7 +155,7 @@ test('mobile product navigation and device denial keep a usable text route', asy
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'test-results/tokai-phase-5-mobile-onboarding.png', fullPage: true });
   await page.getByRole('navigation', { name: 'Mobile learning space', exact: true }).getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Make this space yours.', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   expect(transport.errors).toEqual([]);
 });
 
