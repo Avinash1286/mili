@@ -2,6 +2,10 @@
 
 Full scope: [imp.md](../imp.md). New root: `F:\mili`.
 
+## Completion status
+
+**Complete — local product implementation.** On 2026-11-04, the user declared milli complete after the interactive course player, live voice loop, provider fallback chain, Convex-backed account flow, landing page, Courses surface, and final navigation updates were delivered and verified locally. This status means the application is ready to run from this repository with its required local configuration; it does not imply a public deployment, third-party provider uptime, email delivery service, or unperformed device/accessibility study.
+
 ## Delivery agreement
 
 - Work phase by phase.
@@ -268,6 +272,6 @@ Tested the local Circuits lesson in Chromium using a generated two-sentence WAV 
 
 - The public `/` route is now a dedicated milli landing page with an accessible example of the spoken, hands-on tutoring loop. The working learning hub moved to `/learn`.
 - Navigation now contains only **Learn**. Review and new-lesson controls are removed from the visible product surface. Topic text or dictation in Learn is the entry point for creating a live course; prepared cards remain available for explicit offline practice. Legacy `/review` and `/learn/new` URLs redirect to `/learn`.
-- The profile menu holds **Courses**, **Settings** and **Sign in** (or Account for a signed-in learner). `/courses` lists every non-archived course scoped to the current guest or account. The continuing-course card on Learn is capped at 680px rather than spanning the content area.
+- The profile menu holds **Courses**, **Settings** and **Sign in** (or Account for a signed-in learner). `/courses` lists every course scoped to the current guest or account. The continuing-course card on Learn is capped at 680px rather than spanning the content area.
 - Native Convex/Better Auth email-password sign-in was already present and remains the account system. The landing/profile entry points now expose it, and successful sign-in goes to Courses. Native auth is live locally; email verification and password recovery remain intentionally unavailable and are disclosed on the sign-in screen.
 - Verification after the navigation change: workspace typecheck, workspace tests and production web build passed; focused Chromium Circuits interactive-lesson regression passed. The local Convex watcher had been left at an account-link prompt, which made the API fail closed with `DATABASE_UNAVAILABLE`; it was restarted in anonymous-agent mode and API/web, live tutor, speech, and native auth health are now available locally.
