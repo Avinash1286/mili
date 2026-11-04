@@ -10,6 +10,11 @@ type SharedRecord = ShareLink & { pack: StudyPack };
 export type ArtifactFile = { storageKey: string; contentType: string; filename: string };
 export async function registerArtifacts(app: FastifyInstance, context: ProductContext) {
   const { store, objects, now, env } = context;
+  app.post<{ Params: Params }>('/v1/artifacts/:id/download-ticket', async (request, reply) => {
+    const p = await principal(request, store), record = await store.resources.get<Artifact>(p, 'artifact', request.params.id);
+    if (record.data.status !== 'ready') throw new StoreError(409, 'ARTIFACT_NOT_READY', 'This download is not ready yet.');
+    return reply.header('Cache-Control', 'no-store').send({ transfer: objects.createTransfer ? await objects.createTransfer(p, { kind: 'artifact', id: record.id, operation: 'download' }) : null });
+  });
   app.post<{ Params: Params }>('/v1/sessions/:id/artifacts', async request => {
     const p = await principal(request, store), input = parse(z.object({ kind: z.enum(['study-pack', 'recap', 'cards', 'export']), format: z.enum(['markdown', 'pdf', 'csv', 'json']).optional() }).strict(), request.body);
     return store.locked(request.params.id, async () => {

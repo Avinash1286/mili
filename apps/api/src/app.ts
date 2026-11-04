@@ -1,25 +1,29 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CreateSessionSchema, SendMessageSchema, UpdateBoardSchema, SpeechRequestSchema, BoardTransactionSchema, MapUpdateSchema, ExplainImageSchema, applyMapUpdate, emptyConceptMap, type Session, type SelectionContext, type BoardCommand } from '@tokai/contracts';
+import { CreateSessionSchema, SendMessageSchema, UpdateBoardSchema, SpeechRequestSchema, BoardTransactionSchema, MapUpdateSchema, ExplainImageSchema, applyMapUpdate, emptyConceptMap, type Session, type SelectionContext, type BoardCommand, type PracticeResponse } from '@tokai/contracts';
 import { createLesson, sampleTeachingReply, summarizeSession, generateTutorReply, generateVisionExplanation, validateVisionImage, groundSpatialSelection, VisionError, TutorError, type GenerateReply, type TutorReply } from '@tokai/tutor-core';
 import { synthesizeSpeech } from '@tokai/speech';
 import { ApiError, FileStore } from './store.js';
 import { ConvexStore, NativeObjectStore, FileObjectStore, type Store, type ObjectStore, type Principal } from '@tokai/db';
 import { LearningError, getLessonPack } from '@tokai/learning';
 import { LearningProviderError } from '@tokai/tutor-core/learning';
-import { registerIdentity } from './identity.js';
+import { registerIdentity, type IdentityOptions } from './identity.js';
 import { registerProduct } from './product-routes.js';
 import { registerLearning } from './learning-routes.js';
 import { registerSources, retrieveSources } from './source-routes.js';
 import { registerJobs } from './jobs.js';
 import { registerArtifacts } from './artifact-routes.js';
 import { registerDictation } from './dictation.js';
+import { UsageMeter, registerUsage } from './usage.js';
+import { registerRequestLifecycle, requestSignal } from './request-lifecycle.js';
+import { clientAddress } from './client-address.js';
 import { revokeSavedTranscript } from './privacy.js';
-import { initializeLearning, enqueueArtifact, preferences, type ProductContext, type ProductProviders } from './product-context.js';
+import { initializeLearning, enqueueArtifact, preferences, optionalResource, type ProductContext, type ProductProviders } from './product-context.js';
+import { prepareLearningTurn } from './tutor-learning.js';
 import { VoiceManager, type VoiceOptions } from './voice.js';
 import { applySessionBoardTransaction, sceneFailure } from './board-operations.js';
 import { planTeachingBeats, appendTeachingBeats, commitBeatVisuals } from './teaching.js';
@@ -34,6 +38,7 @@ export type AppOptions = {
   vision?: typeof generateVisionExplanation;
   store?: Store; objects?: ObjectStore;
   learning?: ProductProviders;
+  identity?: Pick<IdentityOptions, 'nativeIdentity'>;
 };
 
 export async function createApp(options: AppOptions = {}) {
@@ -46,11 +51,13 @@ export async function createApp(options: AppOptions = {}) {
   const objects = options.objects ?? (useConvex ? NativeObjectStore.fromEnv(env) : new FileObjectStore(path.join(dataDir, 'objects')));
   await store.initialize();
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024, requestTimeout: 35000, trustProxy: false });
+  registerRequestLifecycle(app);
   await app.register(cors, { origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000', credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] });
-  if (options.rateLimit !== false) await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+  if (options.rateLimit !== false) await app.register(rateLimit, { max: 100, timeWindow: '1 minute', keyGenerator: request => clientAddress(request, env.VERCEL === '1') });
   const providers = () => ({ tutor: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL), speech: Boolean(env.ASSEMBLYAI_API_KEY), voice: Boolean(env.GEMINI_API_KEY && env.GEMINI_MODEL && env.ASSEMBLYAI_API_KEY) });
+  const usage = new UsageMeter(store, env, clock);
   const httpTurns = new Map<string, AbortController>();
-  const voice = new VoiceManager({ store, env, now: clock, tutor: options.tutor ?? generateTutorReply, tutorWithPrincipal: (input, p) => live(input.session, input.text, input.selectedNodeId, input.selection, input.signal, p), voice: options.voice, origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000', httpBusy: id => httpTurns.has(id) });
+  const voice = new VoiceManager({ store, env, usage, now: clock, tutor: options.tutor ?? generateTutorReply, tutorWithPrincipal: (input, p) => live(input.session, input.text, input.selectedNodeId, input.selection, input.signal, p, input.turnId ? { id: input.turnId, practiceResponse: input.practiceResponse, mode: input.inputMode ?? 'typed' } : undefined), voice: options.voice, origin: options.origin ?? env.APP_ORIGIN ?? 'http://localhost:3000', httpBusy: id => httpTurns.has(id) });
   const authenticate = (header: string | undefined) => store.authenticate(header?.startsWith('Bearer ') ? header.slice(7) : undefined);
   const now = () => new Date(clock()).toISOString();
   const bump = (session: Session) => { session.revision++; session.updatedAt = now(); return session; };
@@ -60,20 +67,29 @@ export async function createApp(options: AppOptions = {}) {
     if (!result.success) throw new ApiError(400, 'INVALID_REQUEST', 'The request contains invalid or missing fields.');
     return result.data;
   };
-  const product: ProductContext = { store, objects, env, now, providers: { ...options.learning, speech: options.speech ?? options.learning?.speech }, closeSession: async id => { httpTurns.get(id)?.abort(); await voice.closeSession(id, 'Lesson access changed'); } };
-  async function live(session: Session, text: string, selectedNodeId?: string, selection?: SelectionContext, signal?: AbortSignal, principal?: Principal) {
+  const product: ProductContext = { store, objects, env, usage, now, providers: { ...options.learning, speech: options.speech ?? options.learning?.speech }, closeSession: async id => { httpTurns.get(id)?.abort(); await voice.closeSession(id, 'Lesson access changed'); } };
+  async function live(session: Session, text: string, selectedNodeId?: string, selection?: SelectionContext, signal?: AbortSignal, principal?: Principal, turn?: { id: string; practiceResponse?: PracticeResponse; mode: 'typed' | 'spoken' }) {
     if (!providers().tutor) throw new ApiError(503, 'TUTOR_UNAVAILABLE', 'Live AI is not configured. Choose a sample lesson or configure Gemini on the server.');
+    if (!principal) throw new ApiError(401, 'UNAUTHORIZED', 'A learner session is required.');
+    const learning = turn ? await prepareLearningTurn(product, principal, { session, text, turnId: turn.id, practiceResponse: turn.practiceResponse, mode: turn.mode, signal }) : undefined;
+    if (learning?.answerReply) return learning.finalize(learning.answerReply);
+    let modelCalls = 0;
+    const generated = await usage.run(principal, 'model', 3, async observe => {
     const previousCitations = session.citations ?? [];
     if (principal && session.settings?.sourceIds.length) session.citations = await retrieveSources(product, principal, session, `${session.topic}: ${text}`, signal);
     try {
       if (session.settings?.grounding === 'sources-only' && !session.citations?.length) return { text: 'I could not find supporting material in the selected sources. Ask about a more specific passage, or add a source that covers this question.' };
       // The model sees only this turn's retrieval. Preserve prior references afterwards for saved learning material.
-      return await (options.tutor ?? generateTutorReply)({ session, text, selectedNodeId, selection, signal, limits: { requestTimeoutMs: 45000 }, apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL! });
+      modelCalls = 1;
+      const result = await (options.tutor ?? generateTutorReply)({ session, text, selectedNodeId, selection, signal, learning: learning?.learning, onUsage: observe, limits: { requestTimeoutMs: 45000 }, apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL! });
+      modelCalls = result.diagnostics?.modelCalls ?? modelCalls; return result;
     } finally {
       const citations = new Map(previousCitations.map(citation => [citation.id, citation]));
       for (const citation of session.citations ?? []) { citations.delete(citation.id); citations.set(citation.id, citation); }
       session.citations = [...citations.values()].slice(-80);
     }
+    }, { sessionId: turn ? session.id : undefined, traceId: turn?.id ?? session.id, usedUnits: () => modelCalls });
+    return learning ? learning.finalize(generated) : generated;
   }
   function applyTextReply(session: Session, result: TutorReply, turnId: string) {
     const beats = planTeachingBeats(session, result, turnId, 0);
@@ -89,11 +105,12 @@ export async function createApp(options: AppOptions = {}) {
     if (status && status >= 400 && status < 500) return reply.status(status).send({ code: 'INVALID_REQUEST', message: 'The request could not be accepted.', requestId: request.id });
     return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'The server could not complete the request. Your saved lesson is unchanged.', requestId: request.id });
   });
-  await registerIdentity(app, { store, env, now: clock, closeOwner: async ownerId => { await voice.closeOwner(ownerId); for (const session of await store.list(await store.principalForOwner(ownerId)).catch(() => [])) await product.closeSession(session.id); } });
+  await registerIdentity(app, { ...options.identity, store, env, now: clock, closeOwner: async ownerId => { await voice.closeOwner(ownerId); for (const session of await store.list(await store.principalForOwner(ownerId)).catch(() => [])) await product.closeSession(session.id); } });
+  registerUsage(app, store, usage);
   await voice.register(app);
   await registerSources(app, product);
   await registerLearning(app, product);
-  await registerProduct(app, product, async (p, session) => { applyTextReply(session, await live(session, 'Introduce this lesson briefly and ask one diagnostic question.', undefined, undefined, AbortSignal.timeout(65000), p), `intro:${randomUUID()}`); });
+  await registerProduct(app, product, async (p, session, signal) => { applyTextReply(session, await live(session, 'Introduce this lesson briefly and ask one diagnostic question.', undefined, undefined, AbortSignal.any([AbortSignal.timeout(65000), ...(signal ? [signal] : [])]), p), `intro:${randomUUID()}`); });
   await registerArtifacts(app, product);
   await registerDictation(app, product);
   await registerJobs(app, product);
@@ -109,21 +126,27 @@ export async function createApp(options: AppOptions = {}) {
     const savedPreferences = (await preferences(store, principal)).preferences, pack = getLessonPack(input.topic);
     session.settings = { preferences: input.mode === 'sample' ? { ...savedPreferences, language: 'english' } : savedPreferences, goal: session.title, sourceIds: [], grounding: 'general' };
     if (pack) session.plan = { version: 1, goal: session.title, level: savedPreferences.level, minutes: savedPreferences.lessonMinutes, objectives: pack.objectives.slice(0, 8).map(item => item.text), prerequisites: pack.prerequisites.slice(0, 8), steps: pack.objectives.slice(0, 8).map(item => ({ title: item.text.slice(0, 120), objective: item.text })), provenance: 'authored', status: 'ready' };
-    if (session.mode === 'live') { session.messages = []; applyTextReply(session, await live(session, 'Introduce this lesson with a short explanation and one diagnostic question.', undefined, undefined, AbortSignal.timeout(65000), principal), `intro:${randomUUID()}`); }
-    return store.locked(`owner:${principal.hash}`, async () => {
+    if (session.mode === 'live') { session.messages = []; applyTextReply(session, await live(session, 'Introduce this lesson with a short explanation and one diagnostic question.', undefined, undefined, AbortSignal.any([requestSignal(request), AbortSignal.timeout(65000)]), principal), `intro:${randomUUID()}`); }
+    await store.locked(`owner:${principal.hash}`, async () => {
       if ((await store.list(principal)).length >= 30) throw new ApiError(429, 'SESSION_LIMIT', 'This guest has reached 30 lessons. Delete a saved lesson before starting another.');
       await store.create(principal, session);
       await initializeLearning(product, principal, session);
-      return reply.status(201).send({ session });
     });
+    return reply.status(201).send({ session });
   });
   app.get<{ Params: { id: string } }>('/v1/sessions/:id', async request => ({ session: await store.get(await authenticate(request.headers.authorization), request.params.id) }));
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/messages', { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } }, async request => {
     const principal = await authenticate(request.headers.authorization);
     const input = parse(SendMessageSchema, request.body);
+    const requestHash = createHash('sha256').update(JSON.stringify({ ...input, requestId: undefined })).digest('hex');
+    const turnId = `text:${input.requestId ? createHash('sha256').update(`${principal.ownerId}:${request.params.id}:${input.requestId}`).digest('hex').slice(0, 48) : randomUUID()}`;
+    let duplicate = false;
     const controller = new AbortController();
     const context = await store.locked(request.params.id, async () => {
-      const session = await store.get(principal, request.params.id); ensureActive(session);
+      const session = await store.get(principal, request.params.id);
+      const receipt = await optionalResource<{ hash: string }>(store, principal, 'http-turn', turnId);
+      if (receipt) { if (receipt.data.hash !== requestHash) throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'This request identifier already belongs to a different question.'); duplicate = true; return session; }
+      ensureActive(session);
       await voice.assertHttpAvailable(session.id, principal);
       if (httpTurns.has(session.id)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current tutor response before sending another message.');
       if (session.messages.length > 198 || (session.teachingBeats?.length ?? 0) > 198) throw new ApiError(429, 'TURN_LIMIT', 'This lesson has reached its message limit. Finish it and start a new lesson.');
@@ -131,40 +154,54 @@ export async function createApp(options: AppOptions = {}) {
       groundSpatialSelection(input.selection?.spatial);
       httpTurns.set(session.id, controller); return session;
     });
+    if (duplicate) return { session: context };
     try {
-      const result = context.mode === 'sample' ? sampleTeachingReply(context, input.text, input.selectedNodeId, input.selection) : await live(context, input.text, input.selectedNodeId, input.selection, controller.signal, principal);
+      const signal = AbortSignal.any([controller.signal, requestSignal(request)]);
+      let result: TutorReply;
+      if (context.mode === 'sample' && input.practiceResponse) {
+        const learning = await prepareLearningTurn(product, principal, { session: context, text: input.text, turnId, practiceResponse: input.practiceResponse, mode: 'typed', signal });
+        result = await learning.finalize(learning.answerReply!);
+      } else result = context.mode === 'sample' ? sampleTeachingReply(context, input.text, input.selectedNodeId, input.selection) : await live(context, input.text, input.selectedNodeId, input.selection, signal, principal, { id: turnId, practiceResponse: input.practiceResponse, mode: 'typed' });
       // Plan against the model's immutable input. A later student board edit causes
       // only the stale visual transaction to fail, never a whole-board overwrite.
-      const turnId = `text:${randomUUID()}`, planned = planTeachingBeats(context, result, turnId, 0);
+      const planned = planTeachingBeats(context, result, turnId, 0);
       return await store.locked(request.params.id, async () => {
         const session = await store.get(principal, request.params.id); ensureActive(session);
+        const receipt = await optionalResource<{ hash: string }>(store, principal, 'http-turn', turnId);
+        if (receipt) { if (receipt.data.hash !== requestHash) throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'This request identifier already belongs to a different question.'); return { session }; }
         await voice.assertHttpAvailable(session.id, principal);
-        if (controller.signal.aborted) throw new ApiError(409, 'TURN_CANCELLED', 'The lesson changed before that answer could be saved.');
+        if (signal.aborted) throw new ApiError(409, 'TURN_CANCELLED', 'The lesson changed before that answer could be saved.');
         session.messages.push({ id: randomUUID(), role: 'student', text: input.text, turnId, createdAt: now() });
         if (context.citations) session.citations = context.citations;
         appendTeachingBeats(session, planned, now(), false);
-        for (const beat of planned) commitBeatVisuals(session, beat.beatId);
-        await store.save(principal, bump(session)); return { session };
+        for (const beat of planned) { await result.commitLearning?.(session, beat.beatId); commitBeatVisuals(session, beat.beatId); }
+        if (signal.aborted) throw new ApiError(409, 'TURN_CANCELLED', 'The lesson changed before that answer could be saved.');
+        await store.resources.put(principal, 'http-turn', turnId, { hash: requestHash }, { expectedRevision: -1, sessionId: session.id });
+        await store.save(principal, bump(session));
+        if (signal.aborted) throw new ApiError(409, 'TURN_CANCELLED', 'The lesson changed before that answer could be saved.');
+        return { session };
       });
     } finally { if (httpTurns.get(request.params.id) === controller) httpTurns.delete(request.params.id); }
   });
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/board-operations', async request => {
     const principal = await authenticate(request.headers.authorization), transaction = parse(BoardTransactionSchema, request.body);
-    return store.locked(request.params.id, async () => {
+    const committed = await store.locked(request.params.id, async () => {
       const session = await store.get(principal, request.params.id); ensureActive(session);
       const result = applySessionBoardTransaction(session, transaction, 'student');
       if (!result.duplicate) await store.save(principal, bump(session));
-      voice.publishBoard(session, transaction.operationId); return { session };
+      return { session };
     });
+    voice.publishBoard(committed.session, transaction.operationId); return committed;
   });
   app.patch<{ Params: { id: string } }>('/v1/sessions/:id/map', async request => {
     const principal = await authenticate(request.headers.authorization), update = parse(MapUpdateSchema, request.body);
-    return store.locked(request.params.id, async () => {
+    const committed = await store.locked(request.params.id, async () => {
       const session = await store.get(principal, request.params.id); ensureActive(session);
       if (update.nodes.some(node => node.boardNodeIds?.some(id => !session.board.nodes.some(shape => shape.id === id)) || node.messageIds?.some(id => !session.messages.some(message => message.id === id)) || node.cardIds?.some(id => !session.flashcards.some(card => card.id === id)))) throw new ApiError(400, 'INVALID_MAP_REFERENCE', 'Concept-map links must reference this lesson.');
       try { session.conceptMap = applyMapUpdate(session.conceptMap ?? emptyConceptMap(session.topic), update, 'student'); } catch (error) { throw sceneFailure(error); }
-      await store.save(principal, bump(session)); voice.publishBoard(session, `map:${randomUUID()}`); return { session };
+      await store.save(principal, bump(session)); return { session };
     });
+    voice.publishBoard(committed.session, `map:${randomUUID()}`); return committed;
   });
   app.post<{ Params: { id: string } }>('/v1/sessions/:id/explain-image', { bodyLimit: 1500000, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async request => {
     const principal = await authenticate(request.headers.authorization), input = parse(ExplainImageSchema, request.body);
@@ -178,11 +215,12 @@ export async function createApp(options: AppOptions = {}) {
       httpTurns.set(session.id, controller); return session;
     });
     try {
-      const result = await (options.vision ?? generateVisionExplanation)({ ...input, session: context, apiKey: env.GEMINI_API_KEY!, model: env.VISION_MODEL ?? env.GEMINI_MODEL!, signal: controller.signal });
+      const signal = AbortSignal.any([controller.signal, requestSignal(request)]);
+      const result = await usage.run(principal, 'model', 1, observe => (options.vision ?? generateVisionExplanation)({ ...input, session: context, apiKey: env.GEMINI_API_KEY!, model: env.VISION_MODEL ?? env.GEMINI_MODEL!, signal, onUsage: observe }), { sessionId: context.id });
       return await store.locked(request.params.id, async () => {
         const session = await store.get(principal, request.params.id); ensureActive(session);
         await voice.assertHttpAvailable(session.id, principal);
-        if (controller.signal.aborted) throw new ApiError(409, 'TURN_CANCELLED', 'The image explanation was cancelled.');
+        if (signal.aborted) throw new ApiError(409, 'TURN_CANCELLED', 'The image explanation was cancelled.');
         const turnId = `vision:${randomUUID()}`;
         session.messages.push({ id: randomUUID(), role: 'student', text: `${input.text}\n[Shared a board crop for this explanation only.]`, turnId, createdAt: now() });
         applyTextReply(session, result, turnId); await store.save(principal, bump(session)); return { session };
@@ -242,7 +280,7 @@ export async function createApp(options: AppOptions = {}) {
       if (!message) throw new ApiError(404, 'NOT_FOUND', 'Tutor message not found.');
       if (!env.ASSEMBLYAI_API_KEY) throw new ApiError(503, 'SPEECH_UNAVAILABLE', 'AssemblyAI speech is not configured on the server.');
       try {
-        const result = await (options.speech ?? synthesizeSpeech)({ text: message.text, apiKey: env.ASSEMBLYAI_API_KEY, voiceId: session.settings?.preferences.voiceId ?? env.ASSEMBLYAI_VOICE_ID, language: session.settings?.preferences.language, signal: AbortSignal.timeout(25000) });
+        const result = await usage.run(principal, 'speech', [...message.text].length, () => (options.speech ?? synthesizeSpeech)({ text: message.text, apiKey: env.ASSEMBLYAI_API_KEY!, voiceId: session.settings?.preferences.voiceId ?? env.ASSEMBLYAI_VOICE_ID, language: session.settings?.preferences.language, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(25000)]) }), { sessionId: session.id });
         await store.get(principal, session.id);
         return reply.type(result.contentType).header('Cache-Control', 'no-store').send(result.audio);
       } catch (error) {

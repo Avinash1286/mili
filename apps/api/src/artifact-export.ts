@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb, type PDFFont } from 'pdf-lib';
 import { StudyPackSchema, type StudyPack, type Artifact } from '@tokai/contracts';
@@ -10,7 +11,7 @@ export type ArtifactBytes = { body: Buffer; contentType: string; extension: stri
 const FONT_FILES = [['NotoSans-Regular.ttf', 'b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5'], ['NotoSansMath-Regular.ttf', '80b61fd613d3519197e64fff6f7e71fdc7f3e6526440ea4115b554ef7fd59af7']] as const;
 let fontBytes: Promise<Uint8Array[]> | undefined;
 function loadFonts(): Promise<Uint8Array[]> {
-  fontBytes ??= Promise.all(FONT_FILES.map(([file, hash]) => readFile(new URL(`../../../content/fonts/${file}`, import.meta.url)).then(bytes => { if (createHash('sha256').update(bytes).digest('hex') !== hash) throw new StoreError(503, 'PDF_FONT_CHANGED', 'The bundled PDF font could not be verified.'); return bytes; })));
+  fontBytes ??= Promise.all(FONT_FILES.map(([file, hash]) => readFile(process.env.VERCEL ? resolve(process.cwd(), '.tokai-runtime/content/fonts', file) : new URL(`../../../content/fonts/${file}`, import.meta.url)).then(bytes => { if (createHash('sha256').update(bytes).digest('hex') !== hash) throw new StoreError(503, 'PDF_FONT_CHANGED', 'The bundled PDF font could not be verified.'); return bytes; })));
   return fontBytes;
 }
 function wrap(text: string, measure: (text: string) => number, width: number): string[] {

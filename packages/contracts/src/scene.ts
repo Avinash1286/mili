@@ -1,5 +1,6 @@
-import { z } from 'zod';
+import { z } from './zod-runtime';
 import { SpatialSelectionSchema } from './spatial';
+import { TutorLearningActionSchema } from './learning-action';
 
 // IDs are opaque data, including persisted Phase 2 IDs containing spaces or Unicode.
 // Renderers compare these values directly; they are never selectors or file paths.
@@ -232,7 +233,7 @@ export function layoutDiagram(raw: DiagramSpec, existingBoard?: Board): BoardCom
 }
 
 export const LessonFocusSchema = z.object({ goal: z.string().max(500), currentConceptId: id.optional(), nextStep: z.string().max(500), phase: z.enum(['diagnose', 'explain', 'practice', 'reflect']).optional() }).strict();
-export const TeachingBeatProposalSchema = z.object({ spokenText: z.string().trim().min(1).max(600), displayText: z.string().trim().min(1).max(900), conceptIds: refs.default([]), boardCommands: z.array(BoardCommandSchema).max(40).default([]), highlightNodeIds: refs.default([]), sourceRefs: z.array(z.string().max(200)).max(12).default([]), mapUpdate: MapUpdateSchema.optional(), focus: LessonFocusSchema.optional(), spatialUpdate: SpatialSelectionSchema.optional() }).strict();
+export const TeachingBeatProposalSchema = z.object({ spokenText: z.string().trim().min(1).max(600), displayText: z.string().trim().min(1).max(900), conceptIds: refs.default([]), boardCommands: z.array(BoardCommandSchema).max(40).default([]), highlightNodeIds: refs.default([]), sourceRefs: z.array(z.string().max(200)).max(12).default([]), mapUpdate: MapUpdateSchema.optional(), focus: LessonFocusSchema.optional(), spatialUpdate: SpatialSelectionSchema.optional(), learningAction: z.lazy(() => TutorLearningActionSchema).optional() }).strict();
 export type TeachingBeatProposal = z.infer<typeof TeachingBeatProposalSchema>;
 export const TeachingBeatSchema = TeachingBeatProposalSchema.extend({ beatId: id, turnId: z.string().min(1).max(150), messageId: id, outputEpoch: revision, status: z.enum(['planned', 'ready', 'playing', 'completed', 'interrupted', 'failed']), expectedBoardRevision: revision, boardRevision: revision.optional(), playedMs: z.number().nonnegative().optional(), warnings: z.array(z.string().max(300)).max(8).optional() });
 export type TeachingBeat = z.infer<typeof TeachingBeatSchema>;

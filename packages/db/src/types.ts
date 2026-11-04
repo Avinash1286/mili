@@ -30,6 +30,12 @@ export type MutationGuard = { expectedRevision?: number; lease?: { key: string; 
 export type Mutation<T> = { session: Session; result: T; events?: DomainEvent[]; jobs?: JobIntent[] };
 export type SourceChunk = { id: string; sourceId: string; revision: number; ordinal: number; text: string; page?: number; anchor?: string; embedding?: number[] };
 export type SearchHit = Omit<SourceChunk, 'embedding'> & { score: number };
+export type VoiceTicket = { principal: Principal; sessionId: string; expiresAt: number; fence: number };
+export interface VoiceTickets {
+  issue(principal: Principal, input: { hash: string; sessionId: string; expiresAt: number }): Promise<void>;
+  consumeAndAcquire(hash: string, leaseTtlMs?: number): Promise<VoiceTicket>;
+  revoke(scope: { ownerId?: string; sessionId?: string }): Promise<void>;
+}
 export interface Chunks {
   replace(principal: Principal, sourceId: string, sourceRevision: number, chunks: SourceChunk[]): Promise<void>;
   search(principal: Principal, input: { sourceIds: string[]; text?: string; embedding?: number[]; limit?: number }): Promise<SearchHit[]>;
@@ -39,6 +45,7 @@ export interface Store {
   readonly resources: Resources;
   readonly outbox: Outbox;
   readonly chunks: Chunks;
+  readonly voiceTickets: VoiceTickets;
   initialize(): Promise<void>;
   close(): Promise<void>;
   health(): Promise<boolean>;

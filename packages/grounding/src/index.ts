@@ -1,14 +1,18 @@
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { resolve as resolvePath } from 'node:path';
 import type { SourceChunk } from '@tokai/db';
 import type { SourceMime } from './content.js';
 export * from './content.js';
+export type ProcessingMetrics = { elapsedMs: number; peakRssBytes: number; cpuMs: number };
 
 /** Terminated child process bounds parser/native-model work independently of the API event loop. */
 function child<T>(input: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error('Source processing cancelled.')); return; }
-    const worker = fork(fileURLToPath(new URL('./child.ts', import.meta.url)), [], {
+    const runtime = process.env.VERCEL ? resolvePath(process.cwd(), '.tokai-runtime') : undefined;
+    const worker = fork(runtime ? resolvePath(runtime, 'packages/grounding/src/child.ts') : fileURLToPath(new URL('./child.ts', import.meta.url)), [], {
+      ...(runtime ? { cwd: runtime } : {}),
       execArgv: ['--import', 'tsx', '--max-old-space-size=768'], serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       env: Object.fromEntries(['PATH','SystemRoot','TEMP','TMP','WINDIR','PATHEXT'].flatMap(key => process.env[key] ? [[key, process.env[key]!]] : [])),
     });
@@ -24,6 +28,6 @@ function child<T>(input: Record<string, unknown>, signal?: AbortSignal): Promise
   });
 }
 export function ingestSource(input: { bytes: Uint8Array; mime: SourceMime; sourceId: string; revision: number }, signal?: AbortSignal) {
-  return child<{ pages: number; chunks: SourceChunk[] }>(input, signal);
+  return child<{ pages: number; chunks: SourceChunk[]; metrics: ProcessingMetrics }>(input, signal);
 }
 export async function embedQuery(text: string, signal?: AbortSignal) { return (await child<{ embeddings: number[][] }>({ texts: [text.slice(0, 4000)] }, signal)).embeddings[0]!; }

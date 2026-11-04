@@ -13,12 +13,14 @@ describe('real SDK teaching request serialization (offline)', () => {
       const diagram = body.tools[0].functionDeclarations.find((item: { name: string }) => item.name === 'draw_shapes');
       expect(diagram.parametersJsonSchema.required).toEqual(['expectedRevision', 'diagram']);
       expect(body.generationConfig.maxOutputTokens).toBe(4096);
-      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ functionCall: draw }, { functionCall: submit }] } }] }), { headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ responseId: 'real-sdk-fixture-response', modelVersion: 'mock-model-version', usageMetadata: { promptTokenCount: 321, candidatesTokenCount: 45, totalTokenCount: 366 }, candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ functionCall: draw }, { functionCall: submit }] } }] }), { headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetch);
     const session = createLesson({ id: 'sdk-test', topic: 'photosynthesis', mode: 'live', now: '2026-11-03T12:00:00.000Z', messageId: 'intro' });
-    const result = await generateTutorReply({ session, text: 'Show the energy flow.', apiKey: 'offline-fixture-key', model: 'mock-model', limits: { maxModelCalls: 1, maxRepairAttempts: 0 } });
+    const onUsage = vi.fn();
+    const result = await generateTutorReply({ session, text: 'Show the energy flow.', apiKey: 'offline-fixture-key', model: 'mock-model', onUsage, limits: { maxModelCalls: 1, maxRepairAttempts: 0 } });
     expect(fetch).toHaveBeenCalledOnce(); expect(result.diagnostics).toMatchObject({ modelCalls: 1, toolCalls: 2, textOnlyFallback: false });
     expect(result.beats?.[0].boardCommands.some(command => command.type === 'upsert_node' && command.node.id === 'sdk-light')).toBe(true);
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith({ provider: 'gemini', model: 'mock-model-version', requestId: 'real-sdk-fixture-response', inputTokens: 321, outputTokens: 45, totalTokens: 366 });
   });
 });

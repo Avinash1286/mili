@@ -10,9 +10,10 @@ import { getLessonPack } from '@tokai/learning';
 import { clearIdentityCookies } from './identity.js';
 import { retrieveSources } from './source-routes.js';
 import { revokeSavedTranscript } from './privacy.js';
-import { principal, parse, preferences, bumpSession, initializeLearning, enqueueArtifact, type ProductContext } from './product-context.js';
+import { requestSignal } from './request-lifecycle.js';
+import { principal, parse, preferences, bumpSession, initializeLearning, enqueueArtifact, metered, type ProductContext } from './product-context.js';
 
-export async function registerProduct(app: FastifyInstance, context: ProductContext, introduce: (p: Principal, session: Session) => Promise<void>) {
+export async function registerProduct(app: FastifyInstance, context: ProductContext, introduce: (p: Principal, session: Session, signal?: AbortSignal) => Promise<void>) {
   const { store, env, now } = context;
   app.get('/v1/me/preferences', async request => preferences(store, await principal(request, store)));
   app.patch('/v1/me/preferences', async request => {
@@ -36,13 +37,13 @@ export async function registerProduct(app: FastifyInstance, context: ProductCont
       session.conceptMap = { topicId: session.topic, revision: 0, nodes: [], edges: [] };
       session.lessonFocus = { goal: settings.goal, nextStep: 'Ask a short diagnostic question grounded in the selected material.', phase: 'diagnose' };
     }
-    if (settings.sourceIds.length) session.citations = await retrieveSources(context, p, session, `${input.topic} ${settings.goal}`, AbortSignal.timeout(20000));
+    if (settings.sourceIds.length) session.citations = await retrieveSources(context, p, session, `${input.topic} ${settings.goal}`, AbortSignal.any([requestSignal(request), AbortSignal.timeout(20000)]));
     if (pack && input.grounding !== 'sources-only') session.plan = { version: 1, goal: settings.goal, level: settings.preferences.level, minutes: settings.preferences.lessonMinutes, objectives: pack.objectives.slice(0, 8).map(item => item.text), prerequisites: pack.prerequisites.slice(0, 8), steps: pack.objectives.slice(0, 8).map(item => ({ title: item.text.slice(0, 120), objective: item.text })), provenance: 'authored', status: 'ready' };
     else {
       if (!env.GEMINI_API_KEY || !env.GEMINI_MODEL) throw new StoreError(503, 'TUTOR_UNAVAILABLE', 'Configure Gemini to plan a custom lesson. Prepared samples remain available.');
-      session.plan = await (context.providers?.plan ?? generateLessonPlan)({ topic: input.topic, settings, sourceRefs: session.citations?.map(citation => ({ ...citation, id: undefined, sourceVersion: String(citation.sourceVersion), snippet: citation.snippet.slice(0, 500) })).map(({ id: _id, ...citation }) => citation), apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL, signal: AbortSignal.timeout(45000) });
+      session.plan = await metered(context, p, 'model', 1, onUsage => (context.providers?.plan ?? generateLessonPlan)({ topic: input.topic, settings, sourceRefs: session.citations?.map(citation => ({ ...citation, id: undefined, sourceVersion: String(citation.sourceVersion), snippet: citation.snippet.slice(0, 500) })).map(({ id: _id, ...citation }) => citation), apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]), onUsage }));
     }
-    if (session.mode === 'live') { session.messages = []; await introduce(p, session); }
+    if (session.mode === 'live') { session.messages = []; await introduce(p, session, requestSignal(request)); }
     await store.locked(`owner:${p.ownerId}`, async () => {
       if ((await store.list(p)).length >= 100) throw new StoreError(429, 'SESSION_LIMIT', 'Delete unused lessons before creating more than 100.');
       for (const source of sources) await store.resources.get(p, 'source', source.id);

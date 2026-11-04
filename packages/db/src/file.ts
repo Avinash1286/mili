@@ -3,12 +3,12 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Session } from '@tokai/contracts';
-import { StoreError, type Store, type Principal, type Resources, type Resource, type Outbox, type JobRecord, type MutationGuard, type Mutation, type StoredEvent, type DomainEvent, type Chunks, type SourceChunk } from './types.js';
+import { StoreError, type Store, type Principal, type Resources, type Resource, type Outbox, type JobRecord, type MutationGuard, type Mutation, type StoredEvent, type DomainEvent, type Chunks, type SourceChunk, type VoiceTickets } from './types.js';
 import { assertPrincipal, boundedJson, conflict, duration, identifier, normalizeSession, notFound, revision, safeCode, tokenHash } from './validation.js';
 type Owner = { id: string; kind: 'guest' | 'user'; expiresAt?: string; deletedAt?: string; issuer?: string; subject?: string };
 type Auth = { id: string; ownerId: string; tokenHash: string; expiresAt: string; revoked?: boolean };
-type FileState = { version: 1; owners: Owner[]; auth: Auth[]; sessions: { ownerId: string; session: Session; deleted?: boolean }[]; resources: (Resource & { deleted?: boolean })[]; jobs: JobRecord[]; events: StoredEvent[]; receipts: { ownerId: string; sessionId: string; key: string; hash: string; result: unknown }[]; fences: { key: string; fence: number; expiresAt: number }[]; chunks: (SourceChunk & { ownerId: string })[] };
-const empty = (): FileState => ({ version: 1, owners: [], auth: [], sessions: [], resources: [], jobs: [], events: [], receipts: [], fences: [], chunks: [] });
+type FileState = { version: 1; owners: Owner[]; auth: Auth[]; sessions: { ownerId: string; session: Session; deleted?: boolean }[]; resources: (Resource & { deleted?: boolean })[]; jobs: JobRecord[]; events: StoredEvent[]; receipts: { ownerId: string; sessionId: string; key: string; hash: string; result: unknown }[]; fences: { key: string; fence: number; expiresAt: number }[]; chunks: (SourceChunk & { ownerId: string })[]; voiceTickets: { hash: string; principal: Principal; sessionId: string; sessionRevision: number; expiresAt: number }[] };
+const empty = (): FileState => ({ version: 1, owners: [], auth: [], sessions: [], resources: [], jobs: [], events: [], receipts: [], fences: [], chunks: [], voiceTickets: [] });
 const week = 7 * 86400000;
 /** Explicit single-process compatibility adapter. Full local mode uses Convex. */
 export class FileStore implements Store {
@@ -18,11 +18,42 @@ export class FileStore implements Store {
   readonly resources: Resources;
   readonly outbox: Outbox;
   readonly chunks: Chunks;
+  readonly voiceTickets: VoiceTickets = {
+    issue: async (principal, input) => this.locked('voice-tickets', async () => {
+      this.authorize(principal); const lesson = await this.get(principal, input.sessionId);
+      if (principal.internal || !/^[a-f0-9]{64}$/.test(input.hash) || input.expiresAt <= this.now() || input.expiresAt > this.now() + 60000 || input.expiresAt > Date.parse(principal.expiresAt)) throw new StoreError(400, 'INVALID_TICKET', 'Invalid voice ticket.');
+      if (lesson.mode !== 'live' || lesson.status !== 'active') throw new StoreError(409, 'LIVE_REQUIRED', 'An active live lesson is required.');
+      this.state.voiceTickets = this.state.voiceTickets.filter(ticket => ticket.expiresAt > this.now() && ticket.principal.ownerId !== principal.ownerId);
+      this.state.voiceTickets.push({ ...input, principal, sessionRevision: lesson.revision });
+    }),
+    consumeAndAcquire: async (hash, leaseTtlMs = 30000) => {
+      duration(leaseTtlMs);
+      const result = await this.locked('voice-tickets', async () => {
+        const index = this.state.voiceTickets.findIndex(ticket => ticket.hash === hash), ticket = this.state.voiceTickets[index];
+        if (ticket) this.state.voiceTickets.splice(index, 1);
+        const invalid = new StoreError(401, 'INVALID_TICKET', 'The voice ticket expired, changed or was already used.');
+        if (!ticket || ticket.expiresAt <= this.now()) return invalid;
+        try {
+          const lesson = await this.get(ticket.principal, ticket.sessionId);
+          if (lesson.revision !== ticket.sessionRevision || lesson.status !== 'active' || lesson.mode !== 'live') return invalid;
+        } catch { return invalid; }
+        if (await this.fenceActive(`voice:${ticket.principal.ownerId}`)) return new StoreError(409, 'VOICE_ACTIVE', 'An active connection already owns this lesson.');
+        const fence = await this.nextFence(`voice:${ticket.principal.ownerId}`, leaseTtlMs);
+        return { principal: ticket.principal, sessionId: ticket.sessionId, expiresAt: ticket.expiresAt, fence };
+      });
+      if (result instanceof StoreError) throw result;
+      return result;
+    },
+    revoke: async scope => this.locked('voice-tickets', async () => {
+      if (!scope.ownerId && !scope.sessionId) throw new StoreError(400, 'INVALID_SCOPE', 'A ticket scope is required.');
+      this.state.voiceTickets = this.state.voiceTickets.filter(ticket => !(scope.ownerId === undefined || scope.ownerId === ticket.principal.ownerId) || !(scope.sessionId === undefined || scope.sessionId === ticket.sessionId));
+    })
+  };
   constructor(public readonly directory: string, private readonly now: () => number = Date.now) { this.resources = this.makeResources(); this.outbox = this.makeOutbox(); this.chunks = this.makeChunks(); }
   private stamp() { return new Date(this.now()).toISOString(); }
   async initialize() {
     await mkdir(this.directory, { recursive: true });
-    try { this.state = JSON.parse(await readFile(path.join(this.directory, 'database.json'), 'utf8')) as FileState; if (this.state.version !== 1) throw new Error('Unsupported file database version.'); }
+    try { this.state = JSON.parse(await readFile(path.join(this.directory, 'database.json'), 'utf8')) as FileState; if (this.state.version !== 1) throw new Error('Unsupported file database version.'); this.state.voiceTickets ??= []; }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; await this.importLegacy(); await this.persist(); }
   }
   private async importLegacy() {

@@ -22,11 +22,12 @@ export function plainTeachingBeat(text: string): TeachingBeatProposal {
   return TeachingBeatProposalSchema.parse({ spokenText: text, displayText: text, conceptIds: [], boardCommands: [], highlightNodeIds: [], sourceRefs: [] });
 }
 export function projectTeachingProposal(beat: TeachingBeatProposal): TeachingBeatProposal {
-  return { spokenText: beat.spokenText, displayText: beat.displayText, conceptIds: beat.conceptIds, boardCommands: beat.boardCommands, highlightNodeIds: beat.highlightNodeIds, sourceRefs: beat.sourceRefs, ...(beat.mapUpdate ? { mapUpdate: beat.mapUpdate } : {}), ...(beat.focus ? { focus: beat.focus } : {}), ...(beat.spatialUpdate ? { spatialUpdate: beat.spatialUpdate } : {}) };
+  return { spokenText: beat.spokenText, displayText: beat.displayText, conceptIds: beat.conceptIds, boardCommands: beat.boardCommands, highlightNodeIds: beat.highlightNodeIds, sourceRefs: beat.sourceRefs, ...(beat.mapUpdate ? { mapUpdate: beat.mapUpdate } : {}), ...(beat.focus ? { focus: beat.focus } : {}), ...(beat.spatialUpdate ? { spatialUpdate: beat.spatialUpdate } : {}), ...(beat.learningAction ? { learningAction: beat.learningAction } : {}) };
 }
 /** Validates all planned states without committing or trusting model-provided references. */
 export function validateTeachingPlan(session: Session, proposals: TeachingBeatProposal[]): TeachingBeatProposal[] {
   if (!proposals.length || proposals.length > 2) throw new TutorError('INVALID_TEACHING_PLAN', 'A response must contain one or two short teaching steps.');
+  if (proposals.filter(beat => beat.learningAction).length > 1) throw new TutorError('LEARNING_ACTION_LIMIT', 'Only one practice action is allowed per response.');
   let board = structuredClone(session.board), map = structuredClone(session.conceptMap ?? emptyConceptMap(session.topic));
   let spatial = groundSpatialSelection(session.spatialState);
   const sources = new Set([...session.board.nodes.flatMap(node => node.sourceRefs ?? []), ...(session.citations ?? []).flatMap(citation => [citation.id, citation.chunkId])]);

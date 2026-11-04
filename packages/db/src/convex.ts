@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Session } from '@tokai/contracts';
-import { StoreError, type Store, type Principal, type Resources, type Resource, type Outbox, type JobRecord, type MutationGuard, type Mutation, type StoredEvent, type DomainEvent, type Chunks } from './types.js';
+import { StoreError, type Store, type Principal, type Resources, type Resource, type Outbox, type JobRecord, type MutationGuard, type Mutation, type StoredEvent, type DomainEvent, type Chunks, type VoiceTickets, type VoiceTicket } from './types.js';
 import { assertPrincipal, boundedJson, conflict, duration, identifier, normalizeSession, notFound, revision, tokenHash } from './validation.js';
 import { ServiceTransport, type ConvexConnection, type ConvexTransport } from './transport.js';
 type BufferState = { principal?: Principal; ownerRevision?: number; operations: any[]; sessions: Map<string, Session | null>; resources: Map<string, Resource | null>; jobs: Map<string, JobRecord> };
@@ -11,6 +11,15 @@ export class ConvexStore implements Store {
   readonly resources: Resources;
   readonly outbox: Outbox;
   readonly chunks: Chunks;
+  readonly voiceTickets: VoiceTickets = {
+    issue: async (principal, input) => { this.assertPrincipal(principal); await this.transport.call('mutation', 'tickets:issue', { principal, ...input }); },
+    consumeAndAcquire: async (hash, leaseTtlMs = 30000) => {
+      const result = await this.transport.call<VoiceTicket | { error: { status: number; code: string; message: string } }>('mutation', 'tickets:consume', { hash, leaseTtlMs: duration(leaseTtlMs) });
+      if ('error' in result) throw new StoreError(result.error.status, result.error.code, result.error.message);
+      return result;
+    },
+    revoke: async scope => { await this.transport.call('mutation', 'tickets:revoke', scope); }
+  };
   private readonly now: () => number;
   private readonly transaction = new AsyncLocalStorage<BufferState>();
   private readonly localLocks = new Map<string, Promise<void>>();

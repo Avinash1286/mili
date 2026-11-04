@@ -11,6 +11,7 @@ import { SPATIAL_REQUEST, SPATIAL_SEQUENCE_REQUEST, spatialReply } from './spati
 import { resolveSpatialSelection } from '../../packages/contracts/src/index.js';
 import { FileStore } from '../../packages/db/src/index.js';
 import { fixtureWorker, productProviders } from './product.js';
+import { PRACTICE_REQUEST, practiceReply } from './practice.js';
 
 async function main() {
 const directory = await mkdtemp(path.join(tmpdir(), 'tokai-voice-e2e-'));
@@ -36,6 +37,7 @@ const app = await createApp({
     if (text !== DELAYED_VISUAL_REQUEST) signal?.throwIfAborted();
     if (text === VISUAL_REQUEST || text === DELAYED_VISUAL_REQUEST) return visualReply(session);
     if (text === SPATIAL_REQUEST || text === SPATIAL_SEQUENCE_REQUEST) return spatialReply(text === SPATIAL_SEQUENCE_REQUEST);
+    if (text === PRACTICE_REQUEST) return practiceReply();
     if (selection?.spatial) {
       const { model, parts } = resolveSpatialSelection(selection.spatial);
       return { text: `Selected model: ${model.title}. ${parts.map(part => `${part.label}: ${part.description}`).join(' ')}` };

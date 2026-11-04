@@ -37,6 +37,7 @@ describe('authenticated live voice protocol', () => {
     };
     app = await createApp({ dataDir: directory, rateLimit: false, now: () => now, env: { GEMINI_API_KEY: 'fake-key', GEMINI_MODEL: 'test-model', ASSEMBLYAI_API_KEY: 'fake-speech' }, tutor: input => tutorBehavior(input), voice: {
       boardReadyTimeoutMs: 500,
+      rotateAfterMs: 240000,
       createTranscriber: async input => { transcriberInput = input; await openInput(); return { sendAudio, forceEndpoint, close: closeStt }; },
       createSynthesizer: async input => { synthInput = input; await openOutput(); return { speak: (text, options) => speakBehavior(input, text, options), cancel: cancelTts, close: closeTts }; }
     } });
@@ -74,6 +75,58 @@ describe('authenticated live voice protocol', () => {
     const raw = await ticket(); now += 31000; expect(await rejected(raw)).toBe(401);
     const sample = (await app.inject({ method: 'POST', url: '/v1/sessions', headers: headers(), payload: { topic: 'fractions', mode: 'sample' } })).json().session as Session;
     expect((await app.inject({ method: 'POST', url: `/v1/sessions/${sample.id}/voice-ticket`, headers: headers() })).statusCode).toBe(409);
+  });
+  it('rotates before the platform limit and releases the durable lease for a fresh ticket', async () => {
+    const client = await connect();
+    const closed = new Promise<{ code: number; reason: string }>(resolve => client.ws.once('close', (code, reason) => resolve({ code, reason: reason.toString() })));
+    now += 240001;
+    expect(await closed).toEqual({ code: 1012, reason: 'Voice connection rotating' });
+    const next = await connect(); expect(next.audio).toHaveLength(0);
+  });
+  it('bounds transcription to reserved 30 seconds and settles measured input after finalization', async () => {
+    const client = await connect(); send(client, { type: 'input.audio.start', streamId: 1 });
+    await until(() => client.events.some(event => event.type === 'input.ready'));
+    for (let seq = 0; seq < 30; seq++) {
+      now += 1001;
+      client.ws.send(encodeAudioFrame({ kind: 'input', streamId: 1, outputEpoch: 0, seq, sampleRate: 16000, samples: new Int16Array(16000) }));
+      await until(() => sendAudio.mock.calls.length >= (seq + 1) * 2);
+    }
+    await until(() => client.events.some(event => event.type === 'error' && event.code === 'INPUT_DURATION_LIMIT'));
+    expect(sendAudio.mock.calls.reduce((sum, call) => sum + call[0].byteLength, 0)).toBe(30 * 16000 * 2);
+    client.ws.send(encodeAudioFrame({ kind: 'input', streamId: 1, outputEpoch: 0, seq: 30, sampleRate: 16000, samples: new Int16Array(800) }));
+    await pause(); expect(sendAudio).toHaveBeenCalledTimes(60);
+    transcriberInput!.onFinal({ turnId: 'bounded-final', providerSessionId: 'stt', turnOrder: 1, text: 'Explain sunlight' });
+    await until(() => closeStt.mock.calls.length > 0);
+    const summary = (await app.inject({ url: '/v1/me/usage', headers: headers() })).json();
+    expect(summary.kinds.find((kind: { kind: string }) => kind.kind === 'transcription')).toMatchObject({ used: 30000, active: 0 });
+  });
+  it('commits learning once across sequential beats', async () => {
+    const commitLearning = vi.fn(async () => undefined), inputs: TutorInput[] = [];
+    tutorBehavior = async input => { inputs.push(input); return { ...visualReply(), commitLearning }; };
+    const client = await connect(); send(client, { type: 'input.text', requestId: 'practice-one', text: 'Carbon dioxide' });
+    await until(() => client.events.some(event => event.type === 'board.patch' && event.beatId));
+    expect(inputs[0]?.text).toBe('Carbon dioxide');
+    for (let index = 0; index < 2; index++) {
+      await until(() => client.events.filter(event => event.type === 'board.patch' && event.beatId).length > index);
+      const patch = client.events.filter(event => event.type === 'board.patch' && event.beatId)[index]!;
+      if (patch.type !== 'board.patch') throw new Error('Missing patch');
+      send(client, { type: 'board.ready', beatId: patch.beatId, boardRevision: patch.board.revision, outputEpoch: patch.outputEpoch });
+      await until(() => client.events.filter(event => event.type === 'audio.end').length > index);
+      const start = client.events.filter(event => event.type === 'audio.start')[index]!; if (start.type !== 'audio.start') throw new Error('Missing start');
+      send(client, { type: 'playback.ack', outputEpoch: start.outputEpoch, streamId: start.streamId, playedSamples: 2400, status: 'completed' });
+    }
+    expect(commitLearning).toHaveBeenCalledTimes(1);
+  });
+  it('rolls back learning staged while an interrupt invalidates the teaching transaction', async () => {
+    let release!: () => void, staged = false;
+    tutorBehavior = async () => ({ ...visualReply(), commitLearning: async current => { staged = true; await new Promise<void>(resolve => { release = resolve; }); current.title = 'Stale practice side effect'; } });
+    const client = await connect(); send(client, { type: 'input.text', requestId: 'practice-cancelled', text: 'Ask practice' });
+    await until(() => staged);
+    const epoch = client.events.at(-1)!.outputEpoch;
+    send(client, { type: 'input.interrupt', outputEpoch: epoch }); await until(() => client.events.some(event => event.type === 'audio.cancel' && event.outputEpoch > epoch)); release();
+    await pause(50);
+    const saved = (await app.inject({ url: `/v1/sessions/${session.id}`, headers: headers() })).json().session;
+    expect(saved.title).toBe(session.title); expect(saved.board.nodes.some((node: { id: string }) => node.id === 'energy-step')).toBe(false); expect(client.audio).toHaveLength(0);
   });
   it('deduplicates text durably across reconnect and only marks complete after playback ACK', async () => {
     const client = await connect();

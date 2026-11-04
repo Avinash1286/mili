@@ -11,7 +11,7 @@ The user has updated the infrastructure choices while retaining the complete pro
 
 - **Convex is the database and durable AI background-job platform.** Use transactional Convex functions, scheduled actions, owner-scoped storage, job receipts/retries and native file storage. PostgreSQL/Drizzle/pgvector and Redis/BullMQ references below describe the original proposal and are superseded by equivalent Convex implementations.
 - Complete and verify the application locally first. After completion, deploy the **website to Vercel** and use Vercel's deployment/build workflow. **Do not add GitHub Actions.** Current Vercel Functions support WebSockets; the selected release design hosts Fastify as a Node service with bounded connection rotation, private file transfers and durable Convex coordination. Linux native processing and free-plan deployment limits must pass release checks before publishing.
-- Continue and push each completed implementation phase. Phases 3 and 4 have been pushed at `1baa9f4` and `7ffa8a1` respectively.
+- Continue and push each completed implementation phase. Phases 3, 4 and 5 have been pushed at `1baa9f4`, `7ffa8a1` and `0ff8386` respectively. Phase6 release evidence is tracked in `docs/progress.md` and the Phase6 evaluation, usage, accessibility, operations and deployment documents.
 - Demo videos, submission materials and organizer submission remain deferred. Preserve the existing free-account preference; no billing upgrades or paid fallback.
 
 ## 1. Product direction and hackathon fit

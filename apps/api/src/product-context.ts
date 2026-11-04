@@ -6,10 +6,13 @@ import { StoreError, type Store, type Principal, type ObjectStore, type Resource
 import { getLessonPack, instantiatePackCards, deriveMastery, projectAssessment } from '@tokai/learning';
 import type { synthesizeSpeech, createSynthesizer, createTranscriber } from '@tokai/speech';
 import type { generateLessonPlan, generateAssessment, generateLearningCards, createGeminiRubricGrader } from '@tokai/tutor-core/learning';
+import type { UsageKind } from '@tokai/contracts';
+import type { UsageMeter, UsageReporter } from './usage.js';
 
 export type AttemptRecord = { attempt: AssessmentAttempt; evaluation: AssessmentEvaluation; evidence: MasteryEvidence[]; fingerprint: string };
 export type ProductProviders = { speech?: typeof synthesizeSpeech; recap?: typeof createSynthesizer; transcriber?: typeof createTranscriber; plan?: typeof generateLessonPlan; assessment?: typeof generateAssessment; cards?: typeof generateLearningCards; rubric?: ReturnType<typeof createGeminiRubricGrader> };
-export type ProductContext = { store: Store; objects: ObjectStore; env: Record<string, string | undefined>; now: () => string; closeSession: (id: string) => Promise<void>; providers?: ProductProviders };
+export type ProductContext = { store: Store; objects: ObjectStore; env: Record<string, string | undefined>; now: () => string; closeSession: (id: string) => Promise<void>; providers?: ProductProviders; usage?: UsageMeter };
+export const metered = <T>(context: ProductContext, p: Principal, kind: UsageKind, units: number, work: (observe: UsageReporter) => Promise<T>, trace: { sessionId?: string; traceId?: string; usedUnits?: (value: T) => number } = {}): Promise<T> => context.usage ? context.usage.run(p, kind, units, work, trace) : work(() => {});
 export const parse = <T>(schema: z.ZodType<T>, input: unknown): T => { const result = schema.safeParse(input); if (!result.success) throw new StoreError(400, 'INVALID_REQUEST', 'The request contains invalid or missing fields.'); return result.data; };
 export const principal = (request: FastifyRequest, store: Store) => store.authenticate(request.headers.authorization?.startsWith('Bearer ') ? request.headers.authorization.slice(7) : undefined);
 export const optionalResource = async <T>(store: Store, p: Principal, kind: string, id: string): Promise<Resource<T> | undefined> => {

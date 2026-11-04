@@ -1,0 +1,32 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "web": {
+      "root": "apps/web",
+      "framework": "nextjs",
+      "buildCommand": "pnpm exec tsx ../../infra/deploy/build-web.ts"
+    },
+    "api": {
+      "root": ".",
+      "framework": "fastify",
+      "runtime": "nodejs24.x",
+      "entrypoint": "apps/api/src/server.ts",
+      "buildCommand": "pnpm exec tsx infra/deploy/build-api.ts",
+      "functions": {
+        "apps/api/src/server.ts": {
+          "maxDuration": 300,
+          "memory": 2048,
+          "supportsCancellation": true,
+          "includeFiles": ".tokai-runtime/**"
+        }
+      }
+    }
+  },
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": { "service": "api" } },
+    { "source": "/auth/:path*", "destination": { "service": "api" } },
+    { "source": "/health/:path*", "destination": { "service": "api" } },
+    { "source": "/internal/:path*", "destination": { "service": "api" } },
+    { "source": "/:path*", "destination": { "service": "web" } }
+  ]
+}

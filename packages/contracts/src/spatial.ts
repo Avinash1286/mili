@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-runtime';
 import { SPATIAL_ASSET_HASHES } from './spatial-assets.generated';
 
 export const SpatialModelIdSchema = z.enum(['solar-system', 'dna', 'chloroplast', 'heart']);

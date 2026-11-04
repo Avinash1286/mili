@@ -6,7 +6,7 @@ Built in `F:\mili` from the product direction in the separate `F:\tokai-agora` p
 
 ## Delivery
 
-Phases 1–4 are pushed to the private [GitHub repository](https://github.com/Avinash1286/mili). Phase 5 is implemented and checked locally: Convex persistence and durable AI jobs, local accounts, PDF/image/text sources, five assessment formats, four card formats, scheduled review, study packs, narrated recaps, exports and revocable sharing. The final checks passed 308 tests and the production build; see [Phase 5 testing](docs/phase-5-testing.md) and the exact browser/integration evidence in [progress](docs/progress.md). Phase 6 deployment hardening remains underway.
+Phases 1–5 are pushed to the private [GitHub repository](https://github.com/Avinash1286/mili), including Convex persistence and durable AI jobs, local accounts, PDF/image/text sources, five assessment formats, four card formats, scheduled review, study packs, narrated recaps, exports and revocable sharing. Phase6 adds durable voice rotation/transfers, native password accounts, usage controls, tutor-linked practice and release checks. Final deployment verification remains underway; see the exact current evidence in [progress](docs/progress.md).
 
 Prepared English samples are explicitly labeled. Gemini supplies live tutoring; AssemblyAI supplies transcription and speech. No paid fallback or account upgrade is enabled. A real live diagram probe passed with the existing configured model, taking about 37 seconds; this is functional but slower than the conversational target. See the [provider check](docs/phase-5-provider-check.md).
 
@@ -74,7 +74,7 @@ pnpm models:check
 
 Ordinary tests use isolated temporary data and injected providers. Real local infrastructure checks are opt-in and clearly identified. `pnpm verify:local-learning` exercises actual Convex scheduling, private upload, text PDF parsing, scanned-page OCR, vector retrieval and owner isolation, then deletes its temporary learner.
 
-Provider checks are separate and consume the configured account quota: `pnpm verify:tutor --live`, `pnpm verify:teaching --live --rounds=1 --timeout=45000` and `pnpm verify:speech --live --streaming`. No check changes billing. Probe output under `var/probes` is ignored.
+Provider checks are separate and consume the configured account quota: `pnpm verify:tutor --live`, `pnpm verify:teaching --live --timeout=45000` (one request by default) and `pnpm verify:speech --live --streaming`. No check changes billing. Probe output under `var/probes` is ignored.
 
 ## Privacy and limitations
 

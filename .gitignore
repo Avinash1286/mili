@@ -17,3 +17,5 @@ var/probes/
 apps/web/public/vendor/mediapipe/gesture_recognizer.task
 .tokai-models/
 .convex/
+.vercel/
+.tokai-runtime/

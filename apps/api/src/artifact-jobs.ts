@@ -4,7 +4,7 @@ import { StoreError, type JobRecord, type Principal, type Resource } from '@toka
 import { buildStudyPack, createCardSchedule, instantiatePackCards } from '@tokai/learning';
 import { createSynthesizer, TTS_SAMPLE_RATE, type Synthesizer, type SynthesisBoundaries } from '@tokai/speech';
 import { generateAssessment, generateLearningCards } from '@tokai/tutor-core/learning';
-import { authoredPack, bumpSession, optionalResource, type AttemptRecord, type ProductContext } from './product-context.js';
+import { authoredPack, bumpSession, optionalResource, metered, type AttemptRecord, type ProductContext } from './product-context.js';
 import { pcmToWav, renderArtifactExport, renderCardsJson, type ArtifactBytes } from './artifact-export.js';
 import type { ArtifactFile } from './artifact-routes.js';
 
@@ -90,7 +90,7 @@ export async function runArtifact(context: ProductContext, p: Principal, job: Jo
       if (!pack) throw new StoreError(400, 'SAMPLE_UNAVAILABLE', 'Choose a supported authored sample lesson.');
       newCards = instantiatePackCards(pack, { sessionId: session.id, coveredConceptIds: covered, createId: randomUUID, now: now(), includeReference: true }).filter(card => !initial.cards.some(existing => existing.data.templateId === card.templateId));
     } else {
-      const templates = await (context.providers?.cards ?? generateLearningCards)({ ...provider, session, sourceRefs: sourceInput.refs.slice(-12), rubricAssessments: [...(pack?.assessments ?? []), ...initial.assessments.map(item => item.data)] });
+      const templates = await metered(context, p, 'model', 1, onUsage => (context.providers?.cards ?? generateLearningCards)({ ...provider, session, sourceRefs: sourceInput.refs.slice(-12), rubricAssessments: [...(pack?.assessments ?? []), ...initial.assessments.map(item => item.data)], onUsage }), { sessionId: session.id, traceId: job.id });
       newCards = templates.map(template => {
         const { id: templateId, ...fields } = template;
         const originBeat = [...(session.teachingBeats ?? [])].reverse().find(beat => beat.status === 'completed' && (beat.playedMs ?? 0) > 0 && fields.conceptIds.some(id => beat.conceptIds.includes(id)));
@@ -103,7 +103,7 @@ export async function runArtifact(context: ProductContext, p: Principal, job: Jo
     if (session.mode === 'sample') throw new StoreError(409, 'SAMPLE_ASSESSMENTS', 'All eight prepared sample questions are already available. Use live mode to generate another question.');
     if (initial.assessments.length >= 30) throw new StoreError(429, 'ASSESSMENT_LIMIT', 'This lesson has reached its 30 generated-question limit.');
     const kinds = ['multiple-choice', 'short-answer', 'numeric', 'diagram-label', 'spoken-explanation'] as const;
-    assessment = AssessmentDefinitionSchema.parse(await (context.providers?.assessment ?? generateAssessment)({ ...provider, session, id: randomUUID(), kind: kinds[initial.assessments.length % kinds.length], sourceRefs: sourceInput.refs.slice(-12) }));
+    assessment = AssessmentDefinitionSchema.parse(await metered(context, p, 'model', 1, onUsage => (context.providers?.assessment ?? generateAssessment)({ ...provider, session, id: randomUUID(), kind: kinds[initial.assessments.length % kinds.length], sourceRefs: sourceInput.refs.slice(-12), onUsage }), { sessionId: session.id, traceId: job.id }));
   }
   signal.throwIfAborted();
   let study = makeStudyPack(session, initial, nextCards, sourceInput.refs, now());
@@ -114,7 +114,7 @@ export async function runArtifact(context: ProductContext, p: Principal, job: Jo
   }
   let bytes: ArtifactBytes | undefined, durationMs: number | undefined, captions: Artifact['captions'];
   if (artifact.kind === 'recap') {
-    const text = recapText(study), result = await synthesizeRecap(context, session, text, signal); bytes = result; durationMs = result.durationMs; captions = result.captions;
+    const text = recapText(study), result = await metered(context, p, 'speech', [...text.trim()].length, async observe => { const audio = await synthesizeRecap(context, session, text, signal); observe({ audioMs: audio.durationMs }); return audio; }, { sessionId: session.id, traceId: job.id }); bytes = result; durationMs = result.durationMs; captions = result.captions;
     study = StudyPackSchema.parse({ ...study, recap: { ...study.recap, text, status: 'ready' } });
   } else if (artifact.kind === 'cards') bytes = renderCardsJson(study);
   else if (artifact.kind !== 'assessment') bytes = await renderArtifactExport(study, artifact.kind === 'export' ? artifact.format : 'markdown');

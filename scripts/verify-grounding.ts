@@ -11,6 +11,6 @@ async function main() {
   const vector = await embedQuery('How do plants use sunlight?');
   const cosine = result.chunks[0]!.embedding!.reduce((sum, value, index) => sum + value * vector[index]!, 0);
   if (cosine < .3) throw new Error('The semantic retrieval smoke check did not match its related source.');
-  console.info(JSON.stringify({ actualOcr: true, pages: result.pages, chunks: result.chunks.length, embeddingDimensions: vector.length, relatedSimilarity: Number(cosine.toFixed(3)) }));
+  console.info(JSON.stringify({ actualOcr: true, pages: result.pages, chunks: result.chunks.length, embeddingDimensions: vector.length, relatedSimilarity: Number(cosine.toFixed(3)), metrics: result.metrics }));
 }
 void main().catch(error => { console.error(error instanceof Error ? error.message : 'Grounding check failed.'); process.exitCode = 1; });

@@ -2,20 +2,21 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { AssessmentPresentationSchema, SubmitAssessmentSchema, ReviewSubmissionSchema, LearningCardSchema, type AssessmentPresentation, type LearningCard, type ReviewReceipt } from '@tokai/contracts';
-import { StoreError } from '@tokai/db';
+import { StoreError, type Principal } from '@tokai/db';
 import { createPresentation, applyAssistance, projectAssessment, evaluateAttempt, deriveMastery, invalidateMasteryEvidence, reviseEvaluation, reviseCard, mergeDuplicateCards, createReviewReceipt, createCardSchedule } from '@tokai/learning';
 import { createGeminiRubricGrader, generateLearningCards } from '@tokai/tutor-core/learning';
 import { sources } from './artifact-jobs.js';
 import { invalidateConcepts, invalidateStudyArtifacts } from './corrections.js';
 import { synthesizeSpeech } from '@tokai/speech';
-import { principal, parse, optionalResource, authoredPack, definition, definitions, initializeLearning, learningData, enqueueArtifact, reflectMastery, preferences, type AttemptRecord, type ProductContext } from './product-context.js';
+import { requestSignal } from './request-lifecycle.js';
+import { principal, parse, optionalResource, authoredPack, definition, definitions, initializeLearning, learningData, enqueueArtifact, reflectMastery, preferences, metered, bumpSession, type AttemptRecord, type ProductContext } from './product-context.js';
 
 type SessionParams = { id: string }; type PresentationParams = SessionParams & { presentationId: string };
 const fingerprint = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex');
 export async function registerLearning(app: FastifyInstance, context: ProductContext) {
   const { store, env, now } = context;
   const grading = new Set<string>();
-  const grader = () => context.providers?.rubric ?? (env.GEMINI_API_KEY && env.GEMINI_MODEL ? createGeminiRubricGrader({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL }) : undefined);
+  const grader = (p: Principal, sessionId: string): ReturnType<typeof createGeminiRubricGrader> | undefined => context.providers?.rubric || env.GEMINI_API_KEY && env.GEMINI_MODEL ? input => metered(context, p, 'model', 1, onUsage => (context.providers?.rubric ?? createGeminiRubricGrader({ apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, onUsage }))(input), { sessionId }) : undefined;
   app.get<{ Params: SessionParams }>('/v1/sessions/:id/learning', async request => {
     const p = await principal(request, store);
     await store.locked(request.params.id, async () => initializeLearning(context, p, await store.get(p, request.params.id)));
@@ -48,6 +49,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
       if (mode === 'hint' && !hint) throw new StoreError(404, 'HINT_UNAVAILABLE', 'No more hints are available for this question.');
       const presentation = applyAssistance(def, record.data, { id: randomUUID(), kind: mode === 'hint' ? 'hint' : 'answer-reveal', hintId: hint?.id, at: now() });
       await store.resources.put(p, 'presentation', record.id, presentation, { expectedRevision: record.revision, sessionId: session.id });
+      if (session.practice?.presentation.id === presentation.id) { session.practice.presentation = presentation; await store.save(p, bumpSession(session, now())); }
       return mode === 'hint' ? { hint, presentation } : { explanation: def.explanation, presentation };
     });
   });
@@ -61,7 +63,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     try {
       const session = await store.get(p, request.params.id), def = await definition(store, p, session, input.assessmentId), record = await store.resources.get<AssessmentPresentation>(p, 'presentation', input.presentationId);
       if (record.sessionId !== session.id) throw new StoreError(404, 'NOT_FOUND', 'Practice question not found.');
-      const result = await evaluateAttempt(def, AssessmentPresentationSchema.parse(record.data), input, { sessionId: session.id, evaluationId: randomUUID(), now: now(), rubricGrader: session.mode === 'live' ? grader() : undefined, signal: AbortSignal.timeout(45000) });
+      const result = await evaluateAttempt(def, AssessmentPresentationSchema.parse(record.data), input, { sessionId: session.id, evaluationId: randomUUID(), now: now(), rubricGrader: session.mode === 'live' ? grader(p, session.id) : undefined, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]) });
       return await store.locked(session.id, async () => {
         const latestSession = await store.get(p, session.id);
         const current = await store.resources.get<AssessmentPresentation>(p, 'presentation', record.id);
@@ -73,8 +75,9 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
         await store.resources.put(p, 'attempt', input.attemptId, { ...result, fingerprint: hash } satisfies AttemptRecord, { expectedRevision: -1, sessionId: session.id });
         await store.appendEvent(p, session.id, { id: randomUUID(), type: 'assessment.evaluated', data: { attemptId: input.attemptId, evaluationId: result.evaluation.id } });
         const mastery = deriveMastery([...all.flatMap(item => item.data.evidence), ...result.evidence], now());
+        if (latestSession.practice?.presentation.id === result.attempt.presentationId) latestSession.practice = { ...latestSession.practice, presentation: current.data, status: 'answered', attempt: result.attempt, evaluation: result.evaluation };
         await reflectMastery(context, p, latestSession, mastery);
-        return { attempt: result.attempt, evaluation: result.evaluation, mastery };
+        return { attempt: result.attempt, evaluation: result.evaluation, mastery, session: await store.get(p, session.id) };
       });
     } finally { grading.delete(key); }
   });
@@ -93,6 +96,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
       const data = { ...previous.data, evaluation: corrected.evaluation, evidence: [...invalidateMasteryEvidence(previous.data.evidence, previous.data.evaluation.id, input.reason.slice(0, 500), now()), ...corrected.evidence] };
       await store.resources.put(p, 'attempt', previous.id, data, { expectedRevision: previous.revision, sessionId: session.id });
       const mastery = (await learningData(context, p, latestSession)).mastery;
+      if (latestSession.practice?.attempt?.attemptId === data.attempt.attemptId) latestSession.practice = { ...latestSession.practice, evaluation: data.evaluation };
       await reflectMastery(context, p, latestSession, mastery);
       await invalidateStudyArtifacts(context, p, session.id, 'An assessment result was appealed. Its earlier feedback and mastery evidence have been withdrawn. Regenerate derived artifacts before using them.');
       return { attempt: data.attempt, evaluation: data.evaluation, mastery };
@@ -128,7 +132,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
       if (!env.GEMINI_API_KEY || !env.GEMINI_MODEL) throw new StoreError(503, 'GENERATION_UNAVAILABLE', 'Live card regeneration is not configured. You can edit the correction directly.');
       const rubricAssessments = (await definitions(store, p, session)).filter(item => item.grading.type === 'rubric' && (old.kind !== 'spoken-recall' || item.id === old.rubricAssessmentId));
       if (old.kind === 'spoken-recall' && !rubricAssessments.length) throw new StoreError(409, 'CARD_RUBRIC_UNAVAILABLE', 'The original recall rubric is unavailable. Edit this card directly or generate a new question before regenerating it.');
-      const generated = await (context.providers?.cards ?? generateLearningCards)({ session: { ...session, lessonFocus: { goal: `Correct this ${old.kind} card: ${old.front}. Check: ${old.back}`.slice(0, 500), nextStep: 'Generate a corrected card for the same concept and format.', phase: 'practice' } }, sourceRefs: references.refs.slice(-12), rubricAssessments, apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL, signal: AbortSignal.timeout(45000) });
+      const generated = await metered(context, p, 'model', 1, onUsage => (context.providers?.cards ?? generateLearningCards)({ session: { ...session, lessonFocus: { goal: `Correct this ${old.kind} card: ${old.front}. Check: ${old.back}`.slice(0, 500), nextStep: 'Generate a corrected card for the same concept and format.', phase: 'practice' } }, sourceRefs: references.refs.slice(-12), rubricAssessments, apiKey: env.GEMINI_API_KEY!, model: env.GEMINI_MODEL!, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(45000)]), onUsage }), { sessionId: session.id });
       template = generated.find(card => card.kind === old.kind && card.conceptIds.some(id => old.conceptIds.includes(id)) && (old.kind !== 'spoken-recall' || card.rubricAssessmentId === old.rubricAssessmentId));
       if (!template) throw new StoreError(503, 'CARD_GENERATION_FAILED', 'The generated correction did not preserve this card type and concept. Your original card is unchanged.');
     }
@@ -176,7 +180,7 @@ export async function registerLearning(app: FastifyInstance, context: ProductCon
     const p = await principal(request, store), { data: card } = await store.resources.get<LearningCard>(p, 'card', request.params.id);
     const session = await store.get(p, card.originSessionId), speechPreferences = session.settings?.preferences ?? (await preferences(store, p)).preferences;
     if (!env.ASSEMBLYAI_API_KEY) throw new StoreError(503, 'SPEECH_UNAVAILABLE', 'Speech is not configured.');
-    const result = await (context.providers?.speech ?? synthesizeSpeech)({ text: card.front, voiceId: speechPreferences.voiceId, language: speechPreferences.language, apiKey: env.ASSEMBLYAI_API_KEY, signal: AbortSignal.timeout(25000) });
+    const result = await metered(context, p, 'speech', [...card.front.trim()].length, () => (context.providers?.speech ?? synthesizeSpeech)({ text: card.front, voiceId: speechPreferences.voiceId, language: speechPreferences.language, apiKey: env.ASSEMBLYAI_API_KEY!, signal: AbortSignal.any([requestSignal(request), AbortSignal.timeout(25000)]) }), { sessionId: session.id });
     await store.resources.get(p, 'card', card.id); await store.get(p, session.id);
     return reply.header('Cache-Control', 'no-store').type(result.contentType).send(result.audio);
   });

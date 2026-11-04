@@ -37,7 +37,7 @@ class FakeSocket {
   static OPEN = 1; static instances: FakeSocket[] = [];
   readyState = 1; bufferedAmount = 0; binaryType = '';
   onmessage?: (event: { data: string | ArrayBuffer }) => void;
-  onclose?: () => void; onerror?: () => void;
+  onclose?: (event?: { code: number; reason: string }) => void; onerror?: () => void;
   send = vi.fn(); close = vi.fn(() => { this.readyState = 3; });
   sequence = 0;
   constructor(_url: string) { FakeSocket.instances.push(this); }
@@ -62,7 +62,7 @@ beforeEach(() => {
   FakeSocket.instances = []; FakeWorklet.instances = []; FakeContext.instances = [];
   track = { stop: vi.fn(), addEventListener: vi.fn() };
   getUserMedia = vi.fn(async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }));
-  vi.stubGlobal('window', { isSecureContext: true, AudioContext: FakeContext });
+  vi.stubGlobal('window', { isSecureContext: true, AudioContext: FakeContext, location: { origin: 'https://tokai.example.test' } });
   vi.stubGlobal('AudioContext', FakeContext); vi.stubGlobal('AudioWorkletNode', FakeWorklet); vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia, enumerateDevices: vi.fn(async () => []) } });
   vi.spyOn(api, 'voiceTicket').mockResolvedValue(ticket);
@@ -71,6 +71,24 @@ beforeEach(() => {
 afterEach(() => { runtime.stop(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('browser voice lifecycle', () => {
+  it('rotates a planned connection without re-requesting microphone permission or replaying audio', async () => {
+    await runtime.start(true); const socket = ready();
+    runtime.handsFree(true);
+    socket.onclose?.({ code: 1012, reason: 'Voice connection rotating' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeSocket.instances).toHaveLength(2); expect(getUserMedia).toHaveBeenCalledTimes(1); expect(FakeContext.instances).toHaveLength(1);
+    expect(runtime.getSnapshot()).toMatchObject({ connected: false, state: 'reconnecting', handsFree: false, microphone: true });
+    const next = ready(); expect(runtime.getSnapshot().connected).toBe(true); expect(next.audio()).toHaveLength(0);
+    expect(FakeWorklet.instances[0].port.postMessage).toHaveBeenCalledWith({ type: 'clear', epoch: 0 });
+    runtime.beginTalking(); expect(next.controls().at(-1)).toMatchObject({ type: 'input.audio.start' });
+  });
+  it('cancels planned reconnection when the page is hidden', async () => {
+    await runtime.start(false); const socket = ready();
+    vi.mocked(api.voiceTicket).mockImplementationOnce(() => new Promise(() => {}));
+    socket.onclose?.({ code: 1012, reason: 'Voice connection rotating' });
+    runtime.pauseForVisibility(); await vi.advanceTimersByTimeAsync(1);
+    expect(runtime.getSnapshot()).toMatchObject({ state: 'paused', connected: false }); expect(FakeContext.instances[0].close).toHaveBeenCalled();
+  });
   it('keeps output-only conversation available after microphone permission denial', async () => {
     getUserMedia.mockRejectedValueOnce(new DOMException('Denied', 'NotAllowedError'));
     await runtime.start(true); ready();

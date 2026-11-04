@@ -129,7 +129,7 @@ test('concept map links, accessible list and keyboard arrangement survive saving
   await page.getByRole('combobox', { name: 'Frame', exact: true }).selectOption(VISUAL_FRAME_ID);
   await expect(page.locator('.board-node[data-node-id="fixture-sugar"]')).toBeVisible();
   await page.getByRole('tab', { name: 'Concepts', exact: true }).click();
-  const light = page.getByRole('button', { name: 'Concept Light energy, introduced', exact: true });
+  const light = page.locator('.concept-map-panel').getByRole('button', { name: /Light energy.*introduced/ });
   await expect(light).toBeVisible();
   const before = await light.getAttribute('transform');
   await light.focus(); await page.keyboard.press('ArrowRight');

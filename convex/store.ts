@@ -1,7 +1,9 @@
 import { makeFunctionReference } from 'convex/server';
+import { internal } from './_generated/api';
 import { query, mutation, internalQuery, internalMutation, action } from './_generated/server';
 import { v } from 'convex/values';
 import { activeOwner, authorize, bounded, byId, fail, principal as principalOf, publicResource, resource, service, session } from './guards.js';
+import { claimUsage } from './usage.js';
 const stamp = () => new Date().toISOString();
 const jobRun = makeFunctionReference<'action'>('jobs:run');
 const readRef = makeFunctionReference<'query'>('store:read');
@@ -22,7 +24,8 @@ async function failJobResource(ctx: any, item: any) {
   const record = await resource(ctx, item.ownerId, item.resourceKind, item.resourceId);
   if (record.revision !== item.expectedRevision || !['queued', 'processing', 'running'].includes(record.data.status)) return;
   const updatedAt = stamp(), nextRevision = record.revision + 1;
-  await ctx.db.patch(record._id, { revision: nextRevision, updatedAt, data: { ...record.data, status: 'failed', revision: nextRevision, updatedAt, error: 'Background processing could not finish after bounded retries. Retry this item.' } });
+  const error = item.code === 'DAILY_USAGE_LIMIT' ? 'The daily generation allowance has been reached. Retry after midnight UTC; saved work remains available.' : item.code === 'WORK_CAPACITY' ? 'Generation capacity remained busy after bounded retries. Retry this item after the current work finishes.' : 'Background processing could not finish after bounded retries. Retry this item.';
+  await ctx.db.patch(record._id, { revision: nextRevision, updatedAt, data: { ...record.data, status: 'failed', revision: nextRevision, updatedAt, error } });
   const owner = await activeOwner(ctx, item.ownerId); await ctx.db.patch(owner._id, { revision: owner.revision + 1 });
 }
 async function acquireJob(ctx: any, args: { jobId: string; workerId: string; leaseMs: number }) {
@@ -41,7 +44,7 @@ async function failJob(ctx: any, args: any) {
   const item = await jobOwned(ctx, args.jobId, args.workerId, args.fence), retry = args.retryAt && item.attempts < 3 ? Date.parse(args.retryAt) : undefined;
   if (retry !== undefined && !Number.isFinite(retry)) fail('INVALID_JOB', 400, 'Invalid retry schedule.');
   const update = { state: retry === undefined ? 'failed' : 'pending', lockedUntil: undefined, workerId: undefined, availableAt: retry ?? item.availableAt, code: /^[A-Z][A-Z0-9_]{0,79}$/.test(args.code) ? args.code : 'JOB_FAILED', updatedAt: stamp() };
-  await ctx.db.patch(item._id, update); if (retry !== undefined) await schedule(ctx, { ...item, ...update }); else await failJobResource(ctx, item); return null;
+  await ctx.db.patch(item._id, update); if (retry !== undefined) await schedule(ctx, { ...item, ...update }); else await failJobResource(ctx, { ...item, ...update }); return null;
 }
 async function renewJob(ctx: any, args: any) {
   let item; try { item = await jobOwned(ctx, args.jobId, args.workerId, args.fence); } catch { return false; }
@@ -112,9 +115,14 @@ export const identity = mutation({ args: { operation: v.string(), input: v.any()
   }
   const owner = await authorize(ctx, input.principal);
   if (args.operation === 'revoke') { const auth = await byId(ctx, 'authSessions', input.principal.authSessionId); await ctx.db.patch(auth._id, { revokedAt: Date.now() }); return null; }
-  if (args.operation === 'delete') { await ctx.db.patch(owner._id, { deletedAt: Date.now(), revision: owner.revision + 1 }); return null; }
+  if (args.operation === 'delete') {
+    await ctx.db.patch(owner._id, { deletedAt: Date.now(), revision: owner.revision + 1 });
+    if (owner.issuer === 'urn:tokai:native-auth' && owner.subject) await ctx.scheduler.runAfter(0, internal.nativeAuth.cleanup, { subject: owner.subject });
+    return null;
+  }
   if (args.operation === 'claim') {
     const user = await authorize(ctx, input.user); if (owner.kind !== 'guest' || user.kind !== 'user') fail('INVALID_CLAIM', 400, 'A guest can only be claimed by an account.');
+    await claimUsage(ctx, owner.id, user.id);
     // The owner revision guards make concurrent API writes conflict after transfer.
     for (const table of ['sessions', 'resources', 'events', 'receipts', 'jobs', 'chunks']) {
       const rows = await ctx.db.query(table as any).filter(q => q.eq(q.field('ownerId'), owner.id)).take(5000);

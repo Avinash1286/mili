@@ -100,11 +100,14 @@ it('regenerates a live spoken-recall card with its canonical private rubric and 
   const { card, definition } = await customSpokenCard();
   cardsProvider.mockImplementation(async input => {
     expect(input.rubricAssessments).toEqual([definition]);
+    input.onUsage?.({ provider: 'gemini', model: 'injected-metadata-fixture', requestId: 'card-fixture-1', inputTokens: 29, outputTokens: 11 });
     return [{ id: 'replacement', kind: 'spoken-recall', front: definition.prompt, back: definition.explanation, hint: 'Explain the roles in sequence.', explanation: definition.explanation, conceptIds: ['charge'], sourceRefs: [], rubricAssessmentId: definition.id }];
   });
   const response = await app.inject({ method: 'POST', url: `/v1/flashcards/${card.id}/regenerate`, headers: headers() });
   expect(response.statusCode, response.body).toBe(200); expect(cardsProvider).toHaveBeenCalledTimes(1);
   expect(response.json().card).toMatchObject({ id: card.id, kind: 'spoken-recall', rubricAssessmentId: definition.id, revision: 2, status: 'active' });
+  const usage = (await app.inject({ url: '/v1/me/usage', headers: headers() })).json();
+  expect(usage.kinds.find((kind: { kind: string }) => kind.kind === 'model')).toMatchObject({ used: 1, totals: { inputTokens: 29, outputTokens: 11 } });
 });
 it('rejects a generated spoken correction linked to a different rubric without replacing the card', async () => {
   const { card, definition } = await customSpokenCard();
@@ -124,6 +127,8 @@ it('uses the parent lesson language and voice for review speech and checks owner
   expect(response.statusCode, response.body).toBe(200); expect(response.headers['content-type']).toContain('audio/wav');
   expect(speechProvider).toHaveBeenCalledTimes(1);
   expect(speechProvider.mock.calls[0]![0]).toMatchObject({ text: card.front, language: 'spanish', voiceId: 'aai-jane' });
+  const usage = (await app.inject({ url: '/v1/me/usage', headers: headers() })).json();
+  expect(usage.kinds.find((kind: { kind: string }) => kind.kind === 'speech')).toMatchObject({ used: [...card.front.trim()].length });
 });
 
 it('retains all eighty valid lesson citations in the study pack while bounding generated-card context to twelve', async () => {

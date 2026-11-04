@@ -67,7 +67,7 @@ export function SpatialViewer({ selection, topic, readinessKey, onSelection, onR
       <label className={styles.modelSelect}>Model<select value={model.id} onChange={event => changeModel(event.target.value)}>{SPATIAL_CATALOG.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
     </div>
     {topic && !spatialModelForTopic(topic) && <p className={styles.topicNotice}>This topic has no dedicated 3D model yet. These four models are available to explore; your whiteboard remains available for the lesson.</p>}
-    <div className={styles.toolbar} aria-label="3D view controls">
+    <div className={styles.toolbar} role="group" aria-label="3D view controls">
       <button type="button" aria-label="Rotate left" title="Rotate left" disabled={!ready3d} onClick={() => engine.current?.orbit(-.07, 0)}><ArrowLeft size={16}/></button>
       <button type="button" aria-label="Rotate right" title="Rotate right" disabled={!ready3d} onClick={() => engine.current?.orbit(.07, 0)}><ArrowRight size={16}/></button>
       <button type="button" aria-label="Tilt up" title="Tilt up" disabled={!ready3d} onClick={() => engine.current?.orbit(0, -.07)}><ArrowUp size={16}/></button>
@@ -100,7 +100,7 @@ export function SpatialViewer({ selection, topic, readinessKey, onSelection, onR
     {animation && <p className={styles.animationNote}>{model.animations[0]?.description}</p>}
     <div className={styles.partSection}>
       <div className={styles.partHeading}><h3>Meet the parts</h3><span>{model.parts.length} things to explore</span></div>
-      <div className={styles.partList} aria-label="Model parts">{model.parts.map(part => <button key={part.id} type="button" aria-label={`Select ${part.label}`} aria-pressed={selectedIds.includes(part.id)} onClick={() => select(part.id)}><span style={{ background: part.diagram.color }}/>{part.label}{selectedIds.includes(part.id) && <Check size={13}/>}</button>)}</div>
+      <div className={styles.partList} role="group" aria-label="Model parts">{model.parts.map(part => <button key={part.id} type="button" aria-label={`Select ${part.label}`} aria-pressed={selectedIds.includes(part.id)} onClick={() => select(part.id)}><span style={{ background: part.diagram.color }}/>{part.label}{selectedIds.includes(part.id) && <Check size={13}/>}</button>)}</div>
       <div className={styles.partDetails} aria-live="polite">{selected.length ? selected.map(part => <article key={part.id}><span className={styles.eyebrow}>SELECTED PART</span><h3>{part.label}</h3><p>{part.description}</p></article>) : <p>Select a part to see its role and ask about it.</p>}
         {onExplain && selected.length > 0 && <button type="button" className={styles.explain} disabled={disabled} onClick={onExplain}><HelpCircle size={16}/> Explain selected part</button>}
       </div>

@@ -1,5 +1,6 @@
-import { z } from 'zod';
+import { z } from './zod-runtime';
 import { BoardSchema } from './scene';
+export { TutorLearningActionSchema, type TutorLearningAction } from './learning-action';
 
 const id = z.string().min(1).max(100), text = z.string().min(1).max(4000), version = z.string().min(1).max(40), instant = z.string().datetime();
 const ids = z.array(id).max(24);
@@ -53,6 +54,9 @@ export const AssessmentAnswerSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('diagram-label'), labels: z.record(id, z.string().trim().min(1).max(100)).refine(value => Object.keys(value).length > 0 && Object.keys(value).length <= 12, 'Provide at most twelve labels.') }).strict(),
 ]);
 export type AssessmentAnswer = z.infer<typeof AssessmentAnswerSchema>;
+/** Explicit answering intent; ordinary conversation never supplies assessment evidence. */
+export const PracticeResponseSchema = z.object({ presentationId: id, answer: AssessmentAnswerSchema.optional() }).strict();
+export type PracticeResponse = z.infer<typeof PracticeResponseSchema>;
 export const AssistanceEventSchema = z.object({ id, kind: z.enum(['hint', 'answer-reveal', 'extra-help']), hintId: id.optional(), at: instant }).strict();
 export type AssistanceEvent = z.infer<typeof AssistanceEventSchema>;
 export const AssessmentPresentationSchema = z.object({ id, assessmentId: id, assessmentVersion: version, createdAt: instant, revision: z.number().int().nonnegative(), assistance: z.array(AssistanceEventSchema).max(100) }).strict();
@@ -75,6 +79,8 @@ export const AssessmentEvaluationSchema = z.object({
   misconceptionIds: z.array(id).max(8), normalizedAnswer: z.string().max(1000).optional(), supersedesEvaluationId: id.optional(),
 }).strict();
 export type AssessmentEvaluation = z.infer<typeof AssessmentEvaluationSchema>;
+export const TutorPracticeStateSchema = z.object({ assessment: PublicAssessmentSchema, presentation: AssessmentPresentationSchema, status: z.enum(['presented', 'answered']), turnId: z.string().min(1).max(150), beatId: id, attempt: AssessmentAttemptSchema.optional(), evaluation: AssessmentEvaluationSchema.optional() }).strict();
+export type TutorPracticeState = z.infer<typeof TutorPracticeStateSchema>;
 export const MasteryEvidenceSchema = z.object({ id, packId: id, conceptId: id, attemptId: id, assessmentId: id, assessmentVersion: version, evaluationId: id, outcome: z.enum(['independent-correct', 'assisted-correct', 'partial', 'incorrect', 'uncertain']), observedAt: instant, sourceRefs: sources, invalidatedAt: instant.optional(), invalidationReason: z.string().max(500).optional() }).strict();
 export type MasteryEvidence = z.infer<typeof MasteryEvidenceSchema>;
 export const MasteryEstimateSchema = z.object({ packId: id, conceptId: id, state: z.enum(['unknown', 'learning', 'practicing', 'demonstrated', 'needs-review']), confidence: z.enum(['insufficient', 'emerging', 'supported', 'stale']), evidenceCount: z.number().int().nonnegative(), independentSuccesses: z.number().int().nonnegative(), assistedSuccesses: z.number().int().nonnegative(), lastEvidenceAt: instant.optional(), evaluatedAt: instant, algorithmVersion: z.literal('tokai-mastery-v1'), explanation: z.string().max(600) }).strict();

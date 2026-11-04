@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-runtime';
 
 const id = z.string().min(1).max(100), instant = z.string().datetime();
 export const SpeechLanguageSchema = z.enum(['english', 'spanish', 'german', 'french', 'italian', 'portuguese']);

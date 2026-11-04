@@ -27,17 +27,29 @@
     "local:identity": "tsx infra/local/start-identity.ts",
     "verify:local-learning": "tsx scripts/verify-local-learning.ts",
     "verify:grounding": "tsx scripts/verify-grounding.ts",
+    "eval:tutor": "tsx scripts/evaluate-learning.ts",
+    "verify:capacity": "tsx scripts/verify-capacity.ts",
+    "verify:restore": "tsx scripts/verify-restore.ts",
+    "build:native": "tsx infra/deploy/build-api.ts",
+    "verify:native": "tsx infra/deploy/verify-native.ts",
     "check:secrets": "tsx scripts/check-secrets.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.1",
     "@types/node": "24.10.0",
     "@types/ws": "8.18.1",
+    "@vercel/nft": "1.11.0",
     "concurrently": "9.2.1",
+    "convex": "1.49.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
+    "vercel": "65.10.0",
     "vitest": "5.1.0",
-    "ws": "8.22.1",
-    "convex": "1.49.0"
+    "ws": "8.22.1"
+  },
+  "dependencies": {
+    "@convex-dev/better-auth": "0.12.7",
+    "better-auth": "1.6.34"
   }
 }

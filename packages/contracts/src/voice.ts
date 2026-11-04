@@ -1,5 +1,6 @@
-import { z } from 'zod';
+import { z } from './zod-runtime';
 import { SpatialSelectionSchema } from './spatial';
+import { PracticeResponseSchema } from './learning';
 import { SessionSchema, BoardSchema, ConceptMapSchema, SelectionContextSchema, BoardTransactionSchema } from './index';
 
 export const VOICE_PROTOCOL_VERSION = 1;
@@ -16,8 +17,8 @@ const requestId = z.string().min(1).max(100);
 const uint = z.number().int().min(0).max(0xffffffff);
 const selection = z.string().min(1).max(100).optional();
 export const VoiceClientEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('input.text'), requestId, text: z.string().trim().min(1).max(2000), selectedNodeId: selection, selection: z.lazy(() => SelectionContextSchema).optional() }),
-  z.object({ type: z.literal('input.audio.start'), streamId: uint }),
+  z.object({ type: z.literal('input.text'), requestId, text: z.string().trim().min(1).max(2000), selectedNodeId: selection, selection: z.lazy(() => SelectionContextSchema).optional(), practiceResponse: z.lazy(() => PracticeResponseSchema).optional() }),
+  z.object({ type: z.literal('input.audio.start'), streamId: uint, answeringPresentationId: requestId.optional() }),
   z.object({ type: z.literal('input.audio.end') }),
   z.object({ type: z.literal('input.interrupt'), outputEpoch: uint, reason: z.enum(['control', 'speech', 'typing']).default('control') }),
   z.object({ type: z.literal('input.repeat'), messageId: requestId }),

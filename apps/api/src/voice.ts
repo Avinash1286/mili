@@ -4,10 +4,12 @@ import type { WebSocket, RawData } from 'ws';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { VoiceClientEventSchema, decodeAudioFrame, encodeAudioFrame, MAX_AUDIO_SAMPLES, type Session, type VoiceClientEvent, type VoiceState, type SelectionContext, type TeachingBeat } from '@tokai/contracts';
 import { createTranscriber, createSynthesizer } from '@tokai/speech';
-import { type GenerateReply, TutorError, groundSpatialSelection } from '@tokai/tutor-core';
+import { type GenerateReply, type TutorReply, TutorError, groundSpatialSelection } from '@tokai/tutor-core';
+import type { PracticeResponse } from '@tokai/contracts';
 import { ApiError, type Store, type Principal } from './store.js';
 import { applySessionBoardTransaction, sceneFailure } from './board-operations.js';
 import { planTeachingBeats, appendTeachingBeats, commitBeatVisuals, markTeachingInterrupted } from './teaching.js';
+import type { UsageMeter, UsageLease } from './usage.js';
 
 export type VoiceOptions = {
   createTranscriber?: typeof createTranscriber;
@@ -15,6 +17,9 @@ export type VoiceOptions = {
   ticketTtlMs?: number;
   idleTimeoutMs?: number;
   maxSessionMs?: number;
+  /** Planned platform rotation, distinct from idle/auth expiry. Disabled locally by default. */
+  rotateAfterMs?: number;
+  rotateGraceMs?: number;
   boardReadyTimeoutMs?: number;
 };
 type Ticket = { principal: Principal; sessionId: string; expiresAt: number; fence?: number };
@@ -24,15 +29,16 @@ type RuntimeOptions = {
   tutor: GenerateReply; voice?: VoiceOptions; origin: string;
   tutorWithPrincipal?: (input: Parameters<GenerateReply>[0], principal: Principal) => ReturnType<GenerateReply>;
   httpBusy?: (sessionId: string) => boolean;
+  usage?: UsageMeter;
 };
 type Transcriber = Awaited<ReturnType<typeof createTranscriber>>;
 type Synthesizer = Awaited<ReturnType<typeof createSynthesizer>>;
+type InputUsage = { lease?: UsageLease; samples: number; opening: boolean; stopped: boolean; failed: boolean; settled: boolean };
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const bytes = (raw: RawData): Uint8Array => raw instanceof ArrayBuffer ? new Uint8Array(raw) : Array.isArray(raw) ? Buffer.concat(raw) : raw;
 
 /** Owner lease fences protect persistent writes across API processes. */
 export class VoiceManager {
-  private tickets = new Map<string, Ticket>();
   private sessions = new Map<string, VoiceConnection | 'reserved'>();
   private owners = new Map<string, string>();
   private upgrade = new WeakMap<FastifyRequest, Ticket>();
@@ -42,12 +48,12 @@ export class VoiceManager {
   publishBoard(session: Session, operationId: string) { const connection = this.sessions.get(session.id); if (connection && connection !== 'reserved') connection.publishBoard(session, operationId); }
   async assertHttpAvailable(sessionId: string, principal?: Principal) { if (this.active(sessionId) || principal && await this.options.store.fenceActive(`voice:${principal.ownerId}`)) throw new ApiError(409, 'VOICE_ACTIVE', 'This learner has an active voice connection. Send text through that connection or disconnect voice first.'); }
   async closeSession(sessionId: string, reason: string) {
-    for (const [key, ticket] of this.tickets) if (ticket.sessionId === sessionId) this.tickets.delete(key);
+    await this.options.store.voiceTickets.revoke({ sessionId });
     const connection = this.sessions.get(sessionId);
     if (connection && connection !== 'reserved') await connection.close(reason);
   }
   async closeOwner(ownerId: string) {
-    for (const [key, ticket] of this.tickets) if (ticket.principal.ownerId === ownerId) this.tickets.delete(key);
+    await this.options.store.voiceTickets.revoke({ ownerId });
     const id = this.owners.get(ownerId); if (id) await this.closeSession(id, 'Account access changed');
   }
   async register(app: FastifyInstance) {
@@ -62,11 +68,9 @@ export class VoiceManager {
       if (this.options.httpBusy?.(session.id)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current text response before connecting voice.');
       if (this.owners.has(principal.hash)) throw new ApiError(409, 'VOICE_ACTIVE', 'This guest already has an active voice connection.');
       const now = this.options.now();
-      for (const [key, ticket] of this.tickets) if (ticket.expiresAt <= now || ticket.principal.hash === principal.hash) this.tickets.delete(key);
-      if (this.tickets.size >= 100) throw new ApiError(429, 'VOICE_BUSY', 'Voice connections are busy. Please try again shortly.');
       const ticket = randomBytes(32).toString('base64url');
       const expiresAt = Math.min(now + (this.options.voice?.ticketTtlMs ?? 30000), Date.parse(principal.expiresAt));
-      this.tickets.set(hash(ticket), { principal, sessionId: session.id, expiresAt });
+      await this.options.store.voiceTickets.issue(principal, { hash: hash(ticket), sessionId: session.id, expiresAt });
       return reply.header('Cache-Control', 'no-store').send({ ticket, expiresAt: new Date(expiresAt).toISOString() });
     });
     app.get<{ Querystring: { ticket?: string } }>('/v1/voice', {
@@ -76,16 +80,13 @@ export class VoiceManager {
         if (request.headers.origin !== this.options.origin) throw new ApiError(403, 'INVALID_ORIGIN', 'The voice connection origin is not allowed.');
         const raw = request.query.ticket;
         if (!raw || !/^[\w-]{43}$/.test(raw)) throw new ApiError(401, 'INVALID_TICKET', 'A fresh voice ticket is required.');
-        const key = hash(raw), ticket = this.tickets.get(key);
-        this.tickets.delete(key); // A handshake attempt consumes the ticket.
-        if (!ticket || ticket.expiresAt <= this.options.now()) throw new ApiError(401, 'INVALID_TICKET', 'The voice ticket has expired or was already used.');
+        const ticket = await this.options.store.voiceTickets.consumeAndAcquire(hash(raw));
         this.options.store.assertPrincipal(ticket.principal);
-        await this.options.store.locked(ticket.sessionId, async () => {
+        try { await this.options.store.locked(ticket.sessionId, async () => {
           this.checkSession(await this.options.store.get(ticket.principal, ticket.sessionId));
           if (this.options.httpBusy?.(ticket.sessionId)) throw new ApiError(409, 'TURN_ACTIVE', 'Wait for the current text response before connecting voice.');
           if (this.sessions.size >= 10) throw new ApiError(429, 'VOICE_BUSY', 'Voice connections are busy. Please try again shortly.');
           if (this.sessions.has(ticket.sessionId) || this.owners.has(ticket.principal.hash)) throw new ApiError(409, 'VOICE_ACTIVE', 'A voice connection already owns this lesson or guest.');
-          ticket.fence = await this.options.store.acquireFence(`voice:${ticket.principal.ownerId}`, 30000);
           this.sessions.set(ticket.sessionId, 'reserved');
           this.owners.set(ticket.principal.hash, ticket.sessionId);
           this.upgrade.set(request, ticket);
@@ -98,7 +99,7 @@ export class VoiceManager {
           };
           request.raw.socket.once('close', releaseReservation);
           const timer = setTimeout(releaseReservation, 30000); timer.unref();
-        });
+        }); } catch (error) { await this.options.store.releaseFence(`voice:${ticket.principal.ownerId}`, ticket.fence).catch(() => undefined); throw error; }
       }
     }, (socket, request) => {
       const ticket = this.upgrade.get(request);
@@ -111,7 +112,7 @@ export class VoiceManager {
       this.sessions.set(ticket.sessionId, connection);
       connection.attach();
     });
-    app.addHook('onClose', async () => { await Promise.all([...this.sessions.values()].map(connection => connection === 'reserved' ? Promise.resolve() : connection.close('Server shutting down'))); this.tickets.clear(); });
+    app.addHook('onClose', async () => { await Promise.all([...this.sessions.values()].map(connection => connection === 'reserved' ? Promise.resolve() : connection.close('Server shutting down'))); });
   }
   private checkSession(session: Session) {
     if (session.status !== 'active') throw new ApiError(409, 'SESSION_ENDED', 'This lesson has ended.');
@@ -138,9 +139,10 @@ class VoiceConnection {
   private lastInputStream = -1;
   private inputSequence = -1;
   private inputAudioMs = 0;
+  private inputUsage?: InputUsage;
   private selection?: string;
   private selectionContext?: SelectionContext;
-  private beatQueue?: { ids: string[]; controller: AbortController; epoch: number; llmMs: number };
+  private beatQueue?: { ids: string[]; controller: AbortController; epoch: number; llmMs: number; commitLearning?: TutorReply['commitLearning']; learningBeatId?: string; learningCommitted?: boolean };
   private boardGate?: { beatId: string; revision: number; epoch: number; resolve: (ready: boolean) => void };
   private paused = false;
   private closed = false;
@@ -157,6 +159,7 @@ class VoiceConnection {
   private audioSamples = 0;
   private turns: number[] = [];
   private invalidFrames = 0;
+  private rotating = false;
   constructor(private socket: WebSocket, private ticket: Ticket, private epoch: number, private options: RuntimeOptions, private release: () => void) {
     this.startedAt = this.lastActivity = this.rateWindow = options.now();
   }
@@ -166,6 +169,11 @@ class VoiceConnection {
     this.socket.on('error', () => { void this.close('Connection error'); });
     this.timer = setInterval(() => {
       const now = this.options.now();
+      const rotation = this.options.voice?.rotateAfterMs ?? (this.options.env.VERCEL ? 240000 : 0);
+      if (rotation > 0 && now - this.startedAt >= rotation) {
+        this.rotating = true;
+        if (!this.generation && !this.inputRequested && !this.transcriberOpening || now - this.startedAt >= rotation + (this.options.voice?.rotateGraceMs ?? 30000)) { void this.close('Voice connection rotating', 1012); return; }
+      }
       if (Date.parse(this.ticket.principal.expiresAt) <= now || now - this.startedAt > (this.options.voice?.maxSessionMs ?? 20 * 60 * 1000)) void this.close('Voice session limit reached');
       else if (now - this.lastActivity > (this.options.voice?.idleTimeoutMs ?? 120000)) void this.close('Voice session idle');
       else if (this.currentStream && this.currentStream.sentSamples > this.currentStream.playedSamples && now - this.currentStream.lastAckAt > 10000) void this.close('Playback acknowledgement timed out');
@@ -175,7 +183,7 @@ class VoiceConnection {
       if (this.renewing || this.closed) return;
       this.renewing = true;
       void (async () => {
-        await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
+        if ((await this.options.store.get(this.ticket.principal, this.ticket.sessionId)).status !== 'active') throw new Error('Lesson ended');
         if (!await this.options.store.renewFence(`voice:${this.ticket.principal.ownerId}`, this.ticket.fence!, 30000)) throw new Error('Voice lease expired');
       })().catch(() => this.close('Voice access expired')).finally(() => { this.renewing = false; });
     }, 10000); this.leaseTimer.unref();
@@ -232,9 +240,12 @@ class VoiceConnection {
       if (frame.seq !== this.inputSequence + 1) throw new ApiError(400, 'AUDIO_SEQUENCE_GAP', 'Audio frames arrived out of order. Restart microphone input.');
       this.audioSamples += frame.samples.length;
       if (this.audioSamples > 64000) { await this.close('Audio rate limit reached'); return; }
-      this.inputSequence = frame.seq; this.inputAudioMs += frame.samples.length / 16; this.lastActivity = now;
-      const pcm = Buffer.alloc(frame.samples.length * 2); frame.samples.forEach((sample, index) => pcm.writeInt16LE(sample, index * 2));
+      const remaining = Math.max(0, 16000 * 30 - (this.inputUsage?.samples ?? 0)), samples = frame.samples.subarray(0, remaining);
+      this.inputSequence = frame.seq; this.inputAudioMs += samples.length / 16; this.lastActivity = now;
+      if (this.inputUsage) this.inputUsage.samples += samples.length;
+      const pcm = Buffer.alloc(samples.length * 2); samples.forEach((sample, index) => pcm.writeInt16LE(sample, index * 2));
       for (let offset = 0; offset < pcm.byteLength; offset += 16000) this.transcriber.sendAudio(pcm.subarray(offset, offset + 16000));
+      if (remaining <= frame.samples.length) { this.inputEnabled = false; this.inputRequested = false; this.transcriber.forceEndpoint(); this.state('recognizing'); this.emit({ type: 'error', code: 'INPUT_DURATION_LIMIT', message: 'Each spoken question is limited to 30 seconds. Wait for this answer, then start another question.', recoverable: true }); }
       return;
     }
     if (++this.controls > 60) { await this.close('Control rate limit reached'); return; }
@@ -242,10 +253,11 @@ class VoiceConnection {
     try { event = VoiceClientEventSchema.parse(JSON.parse(Buffer.from(bytes(raw)).toString('utf8'))); }
     catch { if (++this.invalidFrames >= 3) await this.close('Invalid voice protocol'); throw new ApiError(400, 'INVALID_VOICE_EVENT', 'Invalid voice control event.'); }
     if (!['heartbeat', 'playback.ack'].includes(event.type)) this.lastActivity = now;
+    if (this.rotating && ['input.text', 'input.audio.start', 'input.repeat'].includes(event.type)) { this.emit({ type: 'error', code: 'VOICE_ROTATING', message: 'Voice is reconnecting. Send your next question after it reconnects.', recoverable: true }); return; }
     switch (event.type) {
       case 'heartbeat': this.emit({ type: 'heartbeat' }); break;
-      case 'input.text': if (this.paused) throw new ApiError(409, 'VOICE_PAUSED', 'Resume voice before sending a message.'); this.closeInput(); await this.acceptTurn(`text:${event.requestId}`, event.text, event.selectedNodeId ?? this.selection, event.selection ?? this.selectionContext); break;
-      case 'input.audio.start': await this.startInput(event.streamId); break;
+      case 'input.text': if (this.paused) throw new ApiError(409, 'VOICE_PAUSED', 'Resume voice before sending a message.'); this.closeInput(); await this.acceptTurn(`text:${event.requestId}`, event.text, event.selectedNodeId ?? this.selection, event.selection ?? this.selectionContext, event.practiceResponse); break;
+      case 'input.audio.start': await this.startInput(event.streamId, event.answeringPresentationId); break;
       case 'input.audio.end': this.inputRequested = false; this.inputEnabled = false; this.transcriber?.forceEndpoint(); this.state('recognizing'); break;
       case 'input.interrupt': if (event.outputEpoch === this.epoch) await this.interrupt('Interrupted by learner'); break;
       case 'selection.update': {
@@ -257,13 +269,14 @@ class VoiceConnection {
       case 'board.ready': if (this.boardGate?.beatId === event.beatId && this.boardGate.epoch === event.outputEpoch && this.boardGate.revision === event.boardRevision) this.boardGate.resolve(event.ready); break;
       case 'board.operation': {
         try {
-          await this.options.store.locked(this.ticket.sessionId, async () => {
+          const saved = await this.options.store.locked(this.ticket.sessionId, async () => {
             const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
             if (session.status !== 'active') throw new ApiError(409, 'SESSION_ENDED', 'The lesson has ended.');
             const result = applySessionBoardTransaction(session, event.transaction, 'student');
             if (!result.duplicate) await this.save(session);
-            this.publishBoard(session, event.transaction.operationId);
+            return session;
           });
+          this.publishBoard(saved, event.transaction.operationId);
         } catch (error) { const safe = sceneFailure(error); this.emit({ type: 'error', code: safe.code, message: safe.message, operationId: event.transaction.operationId, recoverable: true }); }
         break;
       }
@@ -274,7 +287,8 @@ class VoiceConnection {
       case 'session.close': await this.close('Voice disconnected'); break;
     }
   }
-  private async startInput(streamId: number) {
+  private async startInput(streamId: number, answeringPresentationId?: string) {
+    let pendingPresentation = answeringPresentationId;
     if (this.paused) throw new ApiError(409, 'VOICE_PAUSED', 'Resume voice before enabling the microphone.');
     if (streamId <= this.lastInputStream) throw new ApiError(400, 'AUDIO_STREAM_REUSED', 'Use a new stream ID for each microphone input.');
     this.closeInput();
@@ -284,22 +298,26 @@ class VoiceConnection {
     if (!this.transcriber && !this.transcriberOpening) {
       this.state('connecting');
       const controller = new AbortController(); this.inputController = controller;
+      const usage: InputUsage = { samples: 0, opening: true, stopped: false, failed: false, settled: false }; this.inputUsage = usage;
       const inputValid = () => !this.closed && !this.paused && !controller.signal.aborted && this.inputController === controller;
       const opening = (async () => {
+        usage.lease = await this.options.usage?.begin(this.ticket.principal, 'transcription', 30000, { sessionId: this.ticket.sessionId, traceId: this.connectionId });
+        if (!inputValid()) { usage.stopped = true; return; }
         const transcriber = await (this.options.voice?.createTranscriber ?? createTranscriber)({
           apiKey: this.options.env.ASSEMBLYAI_API_KEY!, model: this.options.env.ASSEMBLYAI_STT_MODEL, signal: AbortSignal.any([controller.signal, this.lifetime.signal]),
           onPartial: event => { if (inputValid()) this.emit({ type: 'transcript.partial', turnId: `stt:${hash(event.turnId)}`, text: event.text }); },
           onFinal: event => {
             if (!inputValid()) return;
+            const presentationId = pendingPresentation; pendingPresentation = undefined;
             if (!this.inputRequested) this.closeInput();
-            if (event.text.trim()) void this.acceptTurn(`stt:${hash(event.turnId)}`, event.text, this.selection, this.selectionContext).catch(error => this.fail(error));
+            if (event.text.trim()) void this.acceptTurn(`stt:${hash(event.turnId)}`, event.text, this.selection, this.selectionContext, presentationId ? { presentationId } : undefined, 'spoken').catch(error => this.fail(error));
           },
           onSpeechStarted: () => { if (inputValid() && this.generation) void this.interrupt('Student started speaking'); },
-          onError: () => { if (inputValid()) { this.closeInput(); this.fail(new ApiError(503, 'STT_FAILED', 'Transcription stopped. Use text input or restart the microphone.')); } }
+          onError: () => { if (inputValid()) { this.closeInput(true); this.fail(new ApiError(503, 'STT_FAILED', 'Transcription stopped. Use text input or restart the microphone.')); } }
         });
         if (!inputValid()) { await transcriber.close(); return; }
         this.transcriber = transcriber;
-      })();
+      })().catch(error => { usage.failed = true; usage.stopped = true; if (this.inputController === controller) this.closeInput(true); throw error; }).finally(() => { usage.opening = false; this.settleInputUsage(usage); });
       this.transcriberOpening = opening;
       void opening.finally(() => { if (this.transcriberOpening === opening) this.transcriberOpening = undefined; }).catch(() => undefined);
     }
@@ -309,11 +327,17 @@ class VoiceConnection {
       else { this.transcriber.forceEndpoint(); this.state('recognizing'); }
     }
   }
-  private closeInput() {
+  private settleInputUsage(usage: InputUsage) {
+    if (!usage.stopped || usage.opening || usage.settled) return;
+    usage.settled = true; void usage.lease?.finish(!usage.failed, usage.samples / 16, { audioMs: usage.samples / 16 });
+  }
+  private closeInput(failed = false) {
     this.inputEnabled = false; this.inputRequested = false;
     this.inputController?.abort(); this.inputController = undefined;
     const transcriber = this.transcriber; this.transcriber = undefined; this.transcriberOpening = undefined;
     transcriber?.close();
+    const usage = this.inputUsage; this.inputUsage = undefined;
+    if (usage) { usage.stopped = true; usage.failed ||= failed; this.settleInputUsage(usage); }
   }
   private cancelNow(reason: string) {
     this.boardGate?.resolve(false); this.boardGate = undefined; this.beatQueue = undefined;
@@ -327,28 +351,29 @@ class VoiceConnection {
     return stream;
   }
   private async markInterrupted(stream: Stream | undefined) {
-    await this.options.store.locked(this.ticket.sessionId, async () => {
+    const saved = await this.options.store.locked(this.ticket.sessionId, async () => {
       const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       let changed = false;
       if (session.teachingBeats?.some(beat => ['planned', 'ready', 'playing'].includes(beat.status) && beat.outputEpoch !== 0)) { markTeachingInterrupted(session); changed = true; }
       for (const message of session.messages) if (message.role === 'tutor' && ['generated', 'playing'].includes(message.delivery ?? '') && (!stream || message.id === stream.messageId)) {
         message.delivery = 'interrupted'; message.playedMs = stream ? stream.playedSamples / 24 : message.playedMs ?? 0; changed = true;
       }
-      if (changed) { await this.save(session); this.snapshot(session); }
+      if (changed) { await this.save(session); return session; }
     }).catch(() => undefined);
+    if (saved) this.snapshot(saved);
   }
   private async interrupt(reason: string) { const old = this.cancelNow(reason); this.state('interrupted'); await this.markInterrupted(old); if (!this.closed && !this.paused) this.state('listening'); }
-  private async acceptTurn(turnId: string, text: string, selectedNodeId?: string, selection?: SelectionContext) {
+  private async acceptTurn(turnId: string, text: string, selectedNodeId?: string, selection?: SelectionContext, practiceResponse?: PracticeResponse, inputMode: 'typed' | 'spoken' = 'typed') {
     if (this.closed || this.paused) return;
     text = text.trim();
     if (!text || text.length > 2000) throw new ApiError(400, 'INPUT_LIMIT', 'Please use a shorter question (up to 2,000 characters).');
     let controller: AbortController | undefined; let context: Session | undefined; let generationEpoch = this.epoch;
-    await this.options.store.locked(this.ticket.sessionId, async () => {
+    const accepted = await this.options.store.locked(this.ticket.sessionId, async () => {
       const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       if (this.closed || this.paused) return;
       if (session.status !== 'active') throw new ApiError(409, 'SESSION_ENDED', 'The lesson has ended.');
       const existing = session.messages.find(message => message.role === 'student' && message.turnId === turnId);
-      if (existing) { if (existing.text !== text) throw new ApiError(409, 'REQUEST_ID_REUSED', 'Use a new request ID for a different message.'); this.snapshot(session); return; }
+      if (existing) { if (existing.text !== text) throw new ApiError(409, 'REQUEST_ID_REUSED', 'Use a new request ID for a different message.'); return session; }
       if (session.messages.length > 198 || (session.teachingBeats?.length ?? 0) > 198) throw new ApiError(429, 'TURN_LIMIT', 'Finish this lesson before starting another conversation.');
       if (selectedNodeId && !session.board.nodes.some(node => node.id === selectedNodeId)) throw new ApiError(400, 'INVALID_SELECTION', 'The selected board item no longer exists.');
       groundSpatialSelection(selection?.spatial);
@@ -363,27 +388,29 @@ class VoiceConnection {
       controller = new AbortController(); this.generation = controller; generationEpoch = this.epoch;
       context = structuredClone(session);
       session.messages.push({ id: randomUUID(), role: 'student', text, turnId, createdAt: new Date(now).toISOString() });
-      await this.save(session); this.snapshot(session);
-      this.emit({ type: 'transcript.final', turnId, text }); this.state('thinking');
+      await this.save(session); return session;
     });
+    if (accepted) this.snapshot(accepted);
     if (!controller || !context) return;
+    this.emit({ type: 'transcript.final', turnId, text }); this.state('thinking');
     const active = controller as AbortController;
     const valid = () => !this.closed && !this.paused && !active.signal.aborted && this.epoch === generationEpoch && this.generation === active;
     const start = this.options.now();
     try {
-      const tutorInput = { session: context, text, selectedNodeId, selection, apiKey: this.options.env.GEMINI_API_KEY!, model: this.options.env.GEMINI_MODEL!, signal: AbortSignal.any([active.signal, this.lifetime.signal, AbortSignal.timeout(65000)]) };
+      const tutorInput = { session: context, text, selectedNodeId, selection, turnId, inputMode, practiceResponse, apiKey: this.options.env.GEMINI_API_KEY!, model: this.options.env.GEMINI_MODEL!, signal: AbortSignal.any([active.signal, this.lifetime.signal, AbortSignal.timeout(65000)]) };
       const result = await (this.options.tutorWithPrincipal ? this.options.tutorWithPrincipal(tutorInput, this.ticket.principal) : this.options.tutor(tutorInput));
       if (!valid()) return;
       const beats = planTeachingBeats(context, result, turnId, generationEpoch);
-      await this.options.store.locked(this.ticket.sessionId, async () => {
+      const planned = await this.options.store.locked(this.ticket.sessionId, async () => {
         const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
         if (!valid() || session.status !== 'active') return;
         if (context?.citations) session.citations = context.citations;
         appendTeachingBeats(session, beats, new Date(this.options.now()).toISOString(), true);
-        await this.save(session); this.snapshot(session);
+        await this.save(session); return session;
       });
       if (!valid()) return;
-      this.beatQueue = { ids: beats.map(beat => beat.beatId), controller: active, epoch: generationEpoch, llmMs: this.options.now() - start };
+      if (planned) this.snapshot(planned);
+      this.beatQueue = { ids: beats.map(beat => beat.beatId), controller: active, epoch: generationEpoch, llmMs: this.options.now() - start, commitLearning: result.commitLearning, learningBeatId: beats.find(beat => beat.learningAction)?.beatId ?? beats[0]?.beatId };
       await this.nextBeat();
     } catch (error) { if (valid()) { this.fail(error); this.state('listening'); } }
   }
@@ -412,9 +439,13 @@ class VoiceConnection {
     const committed = await this.options.store.locked(this.ticket.sessionId, async () => {
       const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       if (!valid() || session.status !== 'active') return;
+      if (!queue.learningCommitted && queue.learningBeatId === beatId && queue.commitLearning) await queue.commitLearning(session, beatId);
+      // A cancellation during a staged resource operation must roll back the transaction.
+      if (!valid()) throw new ApiError(409, 'TURN_CANCELLED', 'This teaching turn was cancelled.');
       const result = commitBeatVisuals(session, beatId);
       await this.save(session); return { session, ...result };
     });
+    if (committed && queue.learningBeatId === beatId) queue.learningCommitted = true;
     if (!committed || !valid()) return;
     const { beat, session, warning } = committed;
     const hasVisuals = !warning && Boolean(beat.boardCommands.length || beat.highlightNodeIds.length || beat.mapUpdate || beat.spatialUpdate);
@@ -427,13 +458,14 @@ class VoiceConnection {
     if (!valid()) return;
     if (hasVisuals && !visualReady) {
       this.emit({ type: 'error', code: 'BOARD_NOT_READY', message: 'The board did not confirm rendering. Continuing with narration; visual timing is unavailable.', recoverable: true });
-      await this.options.store.locked(this.ticket.sessionId, async () => {
+      const saved = await this.options.store.locked(this.ticket.sessionId, async () => {
         const current = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
         if (!valid()) return;
         const saved = current.teachingBeats?.find(value => value.beatId === beatId);
         if (saved) saved.warnings = [...(saved.warnings ?? []), 'Board rendering was not acknowledged; narration continued without synchronized visuals.'].slice(-8);
-        await this.save(current); this.snapshot(current);
+        await this.save(current); return current;
       });
+      if (saved && valid()) this.snapshot(saved);
     } else if (hasVisuals && visualReady) {
       const current = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       if (valid()) this.snapshot(current);
@@ -443,7 +475,7 @@ class VoiceConnection {
   private async repeat(messageId: string) {
     if (this.paused) throw new ApiError(409, 'VOICE_PAUSED', 'Resume voice before replaying.');
     let replay: { text: string; displayText: string; turnId: string; controller: AbortController } | undefined;
-    await this.options.store.locked(this.ticket.sessionId, async () => {
+    const saved = await this.options.store.locked(this.ticket.sessionId, async () => {
       if (this.closed || this.paused) return;
       const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       if (session.status !== 'active') throw new ApiError(409, 'SESSION_ENDED', 'The lesson has ended.');
@@ -460,9 +492,10 @@ class VoiceConnection {
       if (message.delivery !== 'completed') { message.delivery = 'generated'; message.playedMs = 0; }
       const controller = new AbortController(); this.generation = controller;
       replay = { text: session.teachingBeats?.find(beat => beat.messageId === message.id)?.spokenText ?? message.text, displayText: message.text, turnId: message.turnId ?? `repeat:${message.id}`, controller };
-      await this.save(session); this.snapshot(session);
+      await this.save(session); return session;
     });
     if (replay && this.generation === replay.controller && !replay.controller.signal.aborted) {
+      if (saved) this.snapshot(saved);
       this.emit({ type: 'tutor.beat', turnId: replay.turnId, messageId, text: replay.displayText });
       await this.speak(replay.text, messageId, replay.turnId, replay.controller, 0);
     }
@@ -506,16 +539,21 @@ class VoiceConnection {
         segments.push(remaining.slice(0, length).trim()); remaining = remaining.slice(length).trim();
       }
       for (let index = 0; index < segments.length && valid(); index++) {
-        await synth.speak(segments[index]!, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]), onDone: () => {
+        const segment = segments[index]!, units = [...segment].length, beforeSamples = stream.sentSamples + stream.pendingSamples;
+        const usage = await this.options.usage?.begin(this.ticket.principal, 'speech', units, { sessionId: this.ticket.sessionId, traceId: this.connectionId });
+        if (!valid()) { await usage?.finish(true, 0); break; }
+        try { await synth.speak(segment, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]), onDone: () => {
           if (valid() && index === segments.length - 1) { stream.providerDone = true; this.drain(stream); }
-        } });
+        } }); await usage?.finish(true, units, { audioMs: Math.max(0, stream.sentSamples + stream.pendingSamples - beforeSamples) / 24 }); }
+        catch (error) { await usage?.finish(false, undefined, { audioMs: Math.max(0, stream.sentSamples + stream.pendingSamples - beforeSamples) / 24 }); throw error; }
       }
       if (valid()) this.emit({ type: 'voice.metrics', turnId, llmMs, ...(firstAudioMs === undefined ? {} : { firstAudioMs }), inputAudioMs: this.inputAudioMs, outputAudioMs: (stream.sentSamples + stream.pendingSamples) / 24 });
     } catch (error) {
       if (valid()) {
         this.cancelNow('Tutor speech failed');
-        await this.options.store.locked(this.ticket.sessionId, async () => { const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId); markTeachingInterrupted(session, stream.epoch); const beat = session.teachingBeats?.find(value => value.beatId === beatId); if (beat) { beat.status = 'failed'; beat.playedMs = stream.playedSamples / 24; } const message = session.messages.find(message => message.id === messageId); if (message) { message.delivery = 'failed'; message.playedMs = stream.playedSamples / 24; await this.save(session); this.snapshot(session); } }).catch(() => undefined);
-        this.fail(new ApiError(503, 'TTS_FAILED', 'Tutor speech failed. The answer is available as text.')); this.state('listening');
+        const saved = await this.options.store.locked(this.ticket.sessionId, async () => { const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId); markTeachingInterrupted(session, stream.epoch); const beat = session.teachingBeats?.find(value => value.beatId === beatId); if (beat) { beat.status = 'failed'; beat.playedMs = stream.playedSamples / 24; } const message = session.messages.find(message => message.id === messageId); if (message) { message.delivery = 'failed'; message.playedMs = stream.playedSamples / 24; await this.save(session); return session; } }).catch(() => undefined);
+        if (saved) this.snapshot(saved);
+        this.fail(error instanceof ApiError ? error : new ApiError(503, 'TTS_FAILED', 'Tutor speech failed. The answer is available as text.')); this.state('listening');
       }
     } finally { synth?.close(); if (this.synthesizer === synth) this.synthesizer = undefined; }
   }
@@ -528,7 +566,7 @@ class VoiceConnection {
     this.drain(stream);
     const completed = event.status === 'completed' && stream.ended && !stream.cancelled && stream.playedSamples === stream.sentSamples;
     if (event.status === 'completed' && !completed) return;
-    await this.options.store.locked(this.ticket.sessionId, async () => {
+    const saved = await this.options.store.locked(this.ticket.sessionId, async () => {
       const session = await this.options.store.get(this.ticket.principal, this.ticket.sessionId);
       const message = session.messages.find(message => message.id === stream.messageId); if (!message) return;
       if (message.delivery === 'completed') return;
@@ -537,8 +575,9 @@ class VoiceConnection {
       if (message.delivery !== 'failed') message.delivery = completed ? 'completed' : stream.cancelled || event.status === 'interrupted' ? 'interrupted' : 'playing';
       const beat = session.teachingBeats?.find(value => value.beatId === stream.beatId);
       if (beat && beat.status !== 'failed') { beat.playedMs = message.playedMs; beat.status = completed ? 'completed' : stream.cancelled || event.status === 'interrupted' ? 'interrupted' : 'playing'; }
-      await this.save(session); if (event.status !== 'progress') this.snapshot(session);
+      await this.save(session); return session;
     });
+    if (saved && event.status !== 'progress') this.snapshot(saved);
     if (completed && this.currentStream === stream) {
       this.currentStream = undefined;
       if (this.beatQueue?.ids.length) await this.nextBeat();
@@ -570,12 +609,11 @@ class VoiceConnection {
     synthesizer?.close();
   }
   async settleClosing() { if (this.closed) await this.closeWork; }
-  close(reason: string): Promise<void> {
+  close(reason: string, code = 1000): Promise<void> {
     if (this.closeWork) return this.closeWork;
     const old = this.cancelNow(reason); this.state('ended'); this.closed = true;
     this.lifetime.abort(); if (this.timer) clearInterval(this.timer); if (this.leaseTimer) clearInterval(this.leaseTimer);
-    this.socket.close(1000, reason.slice(0, 100));
-    this.closeWork = (async () => { try { await this.markInterrupted(old); } finally { await this.closeProviders(); await this.options.store.releaseFence(`voice:${this.ticket.principal.ownerId}`, this.ticket.fence!).catch(() => undefined); this.release(); } })().catch(() => undefined);
+    this.closeWork = (async () => { try { await this.markInterrupted(old); } finally { await this.closeProviders(); await this.options.store.releaseFence(`voice:${this.ticket.principal.ownerId}`, this.ticket.fence!).catch(() => undefined); this.release(); this.socket.close(code, reason.slice(0, 100)); } })().catch(() => { this.socket.close(code, reason.slice(0, 100)); });
     return this.closeWork;
   }
 }

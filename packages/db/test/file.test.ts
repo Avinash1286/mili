@@ -9,6 +9,22 @@ const paths: string[] = [];
 afterEach(async () => { for (const directory of paths.splice(0)) await rm(directory, { recursive: true, force: true }); });
 async function setup() { const directory = await mkdtemp(path.join(tmpdir(), 'tokai-db-test-')); paths.push(directory); const store = new FileStore(directory); await store.initialize(); const guest = await store.createGuest(), p = await store.authenticate(guest.token); return { directory, store, p, guest }; }
 describe('FileStore compatibility contract', () => {
+  it('persists one-use voice tickets, atomically acquires leases and invalidates changed lessons', async () => {
+    const { directory, store, p } = await setup(), value = { ...lesson(), mode: 'live' as const }; await store.create(p, value);
+    const hash = createHash('sha256').update('ticket-one').digest('hex');
+    await store.voiceTickets.issue(p, { hash, sessionId: value.id, expiresAt: Date.now() + 30000 });
+    const reopened = new FileStore(directory); await reopened.initialize();
+    const results = await Promise.allSettled([reopened.voiceTickets.consumeAndAcquire(hash), reopened.voiceTickets.consumeAndAcquire(hash)]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const winner = results.find(result => result.status === 'fulfilled')!; if (winner.status !== 'fulfilled') throw new Error('Missing winner');
+    await reopened.releaseFence(`voice:${p.ownerId}`, winner.value.fence);
+    await reopened.voiceTickets.issue(p, { hash, sessionId: value.id, expiresAt: Date.now() + 30000 });
+    await reopened.save(p, { ...value, revision: 1, status: 'ended' });
+    await reopened.save(p, { ...value, revision: 2 });
+    await expect(reopened.voiceTickets.consumeAndAcquire(hash)).rejects.toMatchObject({ code: 'INVALID_TICKET' });
+    await reopened.voiceTickets.issue(p, { hash, sessionId: value.id, expiresAt: Date.now() + 30000 });
+    await reopened.revoke(p); await expect(reopened.voiceTickets.consumeAndAcquire(hash)).rejects.toMatchObject({ code: 'INVALID_TICKET' });
+  });
   it('atomically exposes final executor failure without overwriting a superseding resource', async () => {
     const { store, p } = await setup();
     for (const id of ['source-failed', 'source-newer']) {

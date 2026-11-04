@@ -1,7 +1,8 @@
-import { createHash } from 'node:crypto';
-import { StoreError } from './types.js';
+import { createHash, randomBytes } from 'node:crypto';
+import { StoreError, type Principal } from './types.js';
 import { ServiceTransport, type ConvexTransport } from './transport.js';
 export type ObjectMetadata = { size: number; contentType: string; checksum?: string; etag?: string };
+export type PrivateTransfer = { url: string; headers: Record<string, string>; expiresAt: string };
 export interface ObjectStore {
   health(): Promise<boolean>;
   put(key: string, body: Uint8Array, contentType: string, options?: { checksum?: string; signal?: AbortSignal }): Promise<ObjectMetadata>;
@@ -9,10 +10,24 @@ export interface ObjectStore {
   head(key: string): Promise<ObjectMetadata>;
   delete(key: string): Promise<void>;
   close(): void;
+  createTransfer?(principal: Principal, input: { kind: 'source' | 'artifact'; id: string; operation: 'upload' | 'download' }): Promise<PrivateTransfer>;
 }
 /** Private files: only the API service can resolve a key or retrieve bytes. No getUrl leaves this adapter. */
 export class NativeObjectStore implements ObjectStore {
-  constructor(private readonly transport: ConvexTransport, private readonly backendUrl: string, private readonly maxBytes = 20 * 1024 * 1024) {}
+  constructor(private readonly transport: ConvexTransport, private readonly backendUrl: string, private readonly maxBytes = 20 * 1024 * 1024, private readonly siteUrl?: string) {}
+  async createTransfer(principal: Principal, input: { kind: 'source' | 'artifact'; id: string; operation: 'upload' | 'download' }): Promise<PrivateTransfer> {
+    const url = new URL(this.siteUrl ?? this.backendUrl);
+    if (!this.siteUrl) {
+      if (url.hostname.endsWith('.convex.cloud')) url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
+      else if (['127.0.0.1', 'localhost'].includes(url.hostname) && url.port) url.port = String(Number(url.port) + 1);
+      else throw new StoreError(503, 'TRANSFER_UNAVAILABLE', 'CONVEX_SITE_URL is required for private transfers.');
+    }
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) throw new StoreError(503, 'TRANSFER_UNAVAILABLE', 'Private transfers require HTTPS.');
+    url.pathname = '/private-transfer'; url.search = ''; url.hash = '';
+    const token = randomBytes(32).toString('base64url');
+    const result = await this.transport.call<{ expiresAt: number; contentType: string }>('mutation', 'transfers:issue', { principal, hash: createHash('sha256').update(token).digest('hex'), kind: input.kind, resourceId: input.id, operation: input.operation });
+    return { url: url.toString(), headers: { Authorization: `Bearer ${token}`, ...(input.operation === 'upload' ? { 'Content-Type': result.contentType } : {}) }, expiresAt: new Date(result.expiresAt).toISOString() };
+  }
   async health() { try { await this.transport.call('query', 'store:read', { operation: 'health', input: {} }); return true; } catch { return false; } }
   async put(key: string, body: Uint8Array, contentType: string, options: { checksum?: string; signal?: AbortSignal } = {}) {
     if (!body.byteLength || body.byteLength > this.maxBytes) throw new StoreError(413, 'OBJECT_TOO_LARGE', 'This file exceeds the upload limit.');
@@ -34,5 +49,5 @@ export class NativeObjectStore implements ObjectStore {
   }
   async delete(key: string) { await this.transport.call('mutation', 'storage:remove', { key }); }
   close() {}
-  static fromEnv(env: Record<string, string | undefined>) { if (!env.CONVEX_URL) throw new Error('CONVEX_URL is required.'); return new NativeObjectStore(ServiceTransport.fromEnv(env), env.CONVEX_URL, Number(env.MAX_UPLOAD_BYTES) || undefined); }
+  static fromEnv(env: Record<string, string | undefined>) { if (!env.CONVEX_URL) throw new Error('CONVEX_URL is required.'); return new NativeObjectStore(ServiceTransport.fromEnv(env), env.CONVEX_URL, Number(env.MAX_UPLOAD_BYTES) || undefined, env.CONVEX_SITE_URL); }
 }

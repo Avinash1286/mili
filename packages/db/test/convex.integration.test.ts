@@ -12,6 +12,17 @@ describe.skipIf(!enabled)('actual local Convex integration', () => {
   let store: ConvexStore, otherStore: ConvexStore, p: Principal, other: Principal, files: NativeObjectStore;
   beforeAll(async () => { loadEnvFile(fileURLToPath(new URL('../../../.env.local', import.meta.url))); store = ConvexStore.fromEnv(process.env); otherStore = ConvexStore.fromEnv(process.env); await store.initialize(); p = await store.authenticate((await store.createGuest()).token); other = await store.authenticate((await store.createGuest()).token); files = NativeObjectStore.fromEnv(process.env); });
   afterAll(async () => { if (p) await store.deleteOwner(p); if (other) await store.deleteOwner(other); await store?.close(); await otherStore?.close(); });
+  it('consumes shared voice tickets exactly once across API stores and acquires one owner fence', async () => {
+    const value = { ...lesson(), mode: 'live' as const }, hash = createHash('sha256').update(randomUUID()).digest('hex'); await store.create(p, value);
+    await store.voiceTickets.issue(p, { hash, sessionId: value.id, expiresAt: Date.now() + 30000 });
+    const results = await Promise.allSettled([store.voiceTickets.consumeAndAcquire(hash), otherStore.voiceTickets.consumeAndAcquire(hash)]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const winner = results.find(result => result.status === 'fulfilled')!; if (winner.status !== 'fulfilled') throw new Error('Missing winner');
+    expect(await store.fenceActive(`voice:${p.ownerId}`)).toBe(true); await otherStore.releaseFence(`voice:${p.ownerId}`, winner.value.fence);
+    await store.voiceTickets.issue(p, { hash, sessionId: value.id, expiresAt: Date.now() + 30000 });
+    await otherStore.voiceTickets.revoke({ sessionId: value.id }); await expect(store.voiceTickets.consumeAndAcquire(hash)).rejects.toMatchObject({ code: 'INVALID_TICKET' });
+    await store.delete(p, value.id);
+  });
   it('persists sessions and isolates owners through the real service JWT boundary', async () => { const value = lesson(); await store.create(p, value); expect((await otherStore.get(p, value.id)).id).toBe(value.id); await expect(store.get(other, value.id)).rejects.toMatchObject({ status: 404 }); await store.save(p, { ...value, revision: 1 }); await expect(otherStore.save(p, { ...value, revision: 1 })).rejects.toMatchObject({ code: 'REVISION_CONFLICT' }); await store.delete(p, value.id); await expect(store.save(p, { ...value, revision: 2 })).rejects.toMatchObject({ status: 404 }); });
   it('commits a buffered resource/session transaction atomically and rejects concurrent changes', async () => {
     const value = lesson(), id = randomUUID(); await store.create(p, value);
@@ -31,6 +42,25 @@ describe.skipIf(!enabled)('actual local Convex integration', () => {
     expect((await store.chunks.search(p, { sourceIds: [id], embedding }))[0]).toMatchObject({ sourceId: id, page: 2 }); expect((await store.chunks.search(p, { sourceIds: [id], text: 'chloroplast' }))[0].text).toContain('chloroplast'); await expect(store.chunks.search(other, { sourceIds: [id], embedding })).rejects.toMatchObject({ status: 404 });
   });
   it('uses real private native storage and cleans deleted files', async () => { const key = `tests/${randomUUID()}.txt`; try { const metadata = await files.put(key, Buffer.from('private native file'), 'text/plain'); expect(metadata.size).toBe(19); expect((await files.get(key)).body.toString()).toBe('private native file'); await expect(files.get(key, { maxBytes: 2 })).rejects.toMatchObject({ code: 'OBJECT_TOO_LARGE' }); await files.delete(key); await expect(files.head(key)).rejects.toMatchObject({ status: 404 }); } finally { await files.delete(key); } });
+  it('transfers more than4.5MB privately, rejects reuse and invalidates a changed download', async () => {
+    const id = randomUUID(), bytes = Buffer.alloc(6 * 1024 * 1024, 32); bytes.write('%PDF-1.7\n');
+    const checksum = createHash('sha256').update(bytes).digest('hex'), data = { status: 'awaiting-upload', bytes: bytes.length, mimeType: 'application/pdf', checksum, filename: 'private.pdf' };
+    await store.resources.put(p, 'source', id, data, { expectedRevision: -1 });
+    try {
+      await expect(files.createTransfer(other, { kind: 'source', id, operation: 'upload' })).rejects.toMatchObject({ status: 404 });
+      const upload = await files.createTransfer(p, { kind: 'source', id, operation: 'upload' }), headers = { ...upload.headers, Origin: 'http://localhost:3000' };
+      expect(upload.url).not.toContain('Bearer'); expect(new URL(upload.url).search).toBe('');
+      const response = await fetch(upload.url, { method: 'PUT', headers, body: bytes }); expect(response.status, await response.text()).toBe(204);
+      expect((await fetch(upload.url, { method: 'PUT', headers, body: bytes })).status).toBe(401);
+      expect(await files.head(`source/${id}`)).toMatchObject({ size: bytes.length, checksum });
+      const download = await files.createTransfer(p, { kind: 'source', id, operation: 'download' });
+      expect((await fetch(download.url, { headers: { ...download.headers, Origin: 'https://outside.example' } })).status).toBe(403);
+      const result = await fetch(download.url, { headers: { ...download.headers, Origin: 'http://localhost:3000' } }); expect(result.status).toBe(200); expect(Buffer.from(await result.arrayBuffer()).equals(bytes)).toBe(true);
+      expect((await fetch(download.url, { headers: { ...download.headers, Origin: 'http://localhost:3000' } })).status).toBe(401);
+      const stale = await files.createTransfer(p, { kind: 'source', id, operation: 'download' }); await store.resources.put(p, 'source', id, { ...data, status: 'ready' }, { expectedRevision: 0 });
+      expect((await fetch(stale.url, { headers: { ...stale.headers, Origin: 'http://localhost:3000' } })).status).toBe(409);
+    } finally { await files.delete(`source/${id}`); await store.resources.delete(p, 'source', id); }
+  }, 30000);
   it('atomically fences competing owners and rejects stale writes', async () => { const manager = new ConvexLeaseManager(ServiceTransport.fromEnv(process.env)), key = `test:${randomUUID()}`, value = lesson(); await store.create(p, value); const first = await manager.acquire(key); expect(first).toBeDefined(); expect(await manager.acquire(key)).toBeUndefined(); await manager.release(first!); const second = await manager.acquire(key); expect(second!.fence).toBeGreaterThan(first!.fence); await expect(store.save(p, { ...value, revision: 1 }, { lease: { key, fence: first!.fence } })).rejects.toMatchObject({ code: 'LEASE_LOST' }); await store.save(p, { ...value, revision: 1 }, { lease: { key, fence: second!.fence } }); await manager.release(second!); });
   it('resolves only live explicitly shared parent records', async () => { const value = lesson(), hash = createHash('sha256').update(randomUUID()).digest('hex'); await store.create(p, value); await store.resources.put(p, 'share', hash, { expiresAt: new Date(Date.now() + 60000).toISOString(), revoked: false }, { expectedRevision: -1, sessionId: value.id }); expect((await store.resolveShare(hash))?.principal.ownerId).toBe(p.ownerId); await store.resources.put(p, 'share', hash, { expiresAt: new Date(Date.now() + 60000).toISOString(), revoked: true }, { expectedRevision: 0 }); expect(await store.resolveShare(hash)).toBeUndefined(); });
   it('imports a legacy token hash idempotently and preserves guest access', async () => {

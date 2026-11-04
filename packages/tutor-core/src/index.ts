@@ -1,6 +1,6 @@
 export { createLesson, sampleReply, summarizeSession, lessonBoard, LESSONS } from './lessons.js';
 export { sampleTeachingReply } from './sample-teaching.js';
-export { TutorError, type TutorInput, type TutorReply, type GenerateReply, type TutorDiagnostics } from './types.js';
+export { TutorError, type TutorInput, type TutorReply, type GenerateReply, type TutorDiagnostics, type ProviderUsage, type ProviderUsageObserver, type TutorLearningContext, type PreparedLearningAction } from './types.js';
 export { generateTutorReply } from './provider.js';
 export { validateTeachingPlan, normalizeTeachingReply, plainTeachingBeat, splitTeachingText, projectTeachingProposal } from './teaching.js';
 export { generateVisionExplanation, validateVisionImage, VisionError, type VisionInput } from './vision.js';

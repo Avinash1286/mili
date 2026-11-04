@@ -5,3 +5,4 @@ export * from './transport.js';
 export * from './objects.js';
 export * from './file-objects.js';
 export * from './legacy.js';
+export * from './native-identity.js';

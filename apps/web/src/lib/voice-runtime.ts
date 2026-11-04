@@ -1,4 +1,4 @@
-import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection } from '@tokai/contracts';
+import { decodeAudioFrame, encodeAudioFrame, VoiceServerEventSchema, type VoiceClientEvent, type VoiceState, type Session, type Board, type BoardTransaction, type ConceptMap, type SelectionContext, type SpatialSelection, type PracticeResponse } from '@tokai/contracts';
 import { api, errorText, RequestError, voiceSocketUrl } from './api';
 
 export type VoiceView = {
@@ -71,14 +71,34 @@ export class VoiceRuntime {
         try { await this.enableMicrophone(deviceId); } catch (e) { if (generation !== this.generation) return; this.update({ notice: `${microphoneError(e)} Voice output still works with typed questions.`, microphone: false }); }
       }
       if (generation !== this.generation) return;
-      const ticket = await this.ticketAfterOwnClose(connectAbort.signal);
-      if (generation !== this.generation) return;
-      const socket = new WebSocket(voiceSocketUrl(ticket.ticket)); socket.binaryType = 'arraybuffer'; this.socket = socket;
-      this.connectTimer = setTimeout(() => { if (generation === this.generation && !this.view.connected) this.fail('The voice connection took too long. Retry, or continue typing.'); }, 15000);
-      socket.onmessage = event => { if (generation !== this.generation) return; try { if (typeof event.data === 'string') this.receiveEvent(event.data); else if (event.data instanceof ArrayBuffer) this.receiveAudio(event.data); else throw new Error('Unsupported voice frame'); } catch { this.fail('The voice stream could not be read safely. Reconnect to continue.'); } };
-      socket.onerror = () => { if (generation === this.generation) this.update({ error: 'The voice connection failed. Check the connection and retry.' }); };
-      socket.onclose = () => { if (generation !== this.generation || this.intentionalClose) return; this.stop('reconnecting'); this.update({ notice: 'Voice disconnected. Reconnect to restore the latest lesson; old audio will not replay.' }); };
+      await this.connectSocket(generation, connectAbort.signal);
     } catch (e) { if (generation === this.generation) this.fail(errorText(e)); }
+  }
+  private async connectSocket(generation: number, signal: AbortSignal) {
+    const ticket = await this.ticketAfterOwnClose(signal);
+    if (generation !== this.generation || signal.aborted) return;
+    const socket = new WebSocket(voiceSocketUrl(ticket.ticket)); socket.binaryType = 'arraybuffer'; this.socket = socket;
+    this.connectTimer = setTimeout(() => { if (generation === this.generation && !this.view.connected) this.fail('The voice connection took too long. Retry, or continue typing.'); }, 15000);
+    socket.onmessage = event => { if (generation !== this.generation || this.socket !== socket) return; try { if (typeof event.data === 'string') this.receiveEvent(event.data); else if (event.data instanceof ArrayBuffer) this.receiveAudio(event.data); else throw new Error('Unsupported voice frame'); } catch { this.fail('The voice stream could not be read safely. Reconnect to continue.'); } };
+    socket.onerror = () => { if (generation === this.generation && this.socket === socket) this.update({ error: 'The voice connection failed. Check the connection and retry.' }); };
+    socket.onclose = event => {
+      if (generation !== this.generation || this.intentionalClose || this.socket !== socket) return;
+      if (event?.code === 1012 && event.reason === 'Voice connection rotating') { void this.rotate(generation); return; }
+      this.stop('reconnecting'); this.update({ notice: 'Voice disconnected. Reconnect to restore the latest lesson; old audio will not replay.' });
+    };
+  }
+  /** Keep the explicitly unlocked audio context; never restart capture or replay a turn. */
+  private async rotate(generation: number) {
+    clearInterval(this.heartbeat); clearTimeout(this.connectTimer);
+    this.socket = undefined; this.ownCloseUntil = Date.now() + 3000;
+    this.abandonInput(false); this.update({ connected: false, state: 'reconnecting', handsFree: false, partial: '', caption: '', highlightNodeIds: [], notice: 'Reconnecting voice. Your lesson is saved; press to talk when ready.' });
+    this.playback?.port.postMessage({ type: 'clear', epoch: 0 });
+    for (const prepare of this.visualPrepares.values()) prepare.abort(); this.visualPrepares.clear();
+    for (const request of this.boardRequests.values()) { clearTimeout(request.timer); request.reject(new Error('Voice reconnected before this save was acknowledged. Reload before retrying.')); } this.boardRequests.clear();
+    this.streams.clear(); this.beats.clear(); this.readyBeats.clear(); this.finalizedAt = undefined;
+    this.connectionId = undefined; this.lastServerSeq = -1; this.epoch = 0; this.blockedEpoch = -1;
+    const abort = new AbortController(); this.connectAbort?.abort(); this.connectAbort = abort;
+    try { await this.connectSocket(generation, abort.signal); } catch (error) { if (generation === this.generation) this.fail(errorText(error)); }
   }
   private async ticketAfterOwnClose(signal: AbortSignal) {
     for (let attempt = 0; ; attempt++) {
@@ -129,12 +149,12 @@ export class VoiceRuntime {
   }
   async changeDevice(id: string) { try { await this.enableMicrophone(id); } catch (e) { this.update({ notice: microphoneError(e) }); } }
   handsFree(enabled: boolean) { if (!this.view.microphone) return; if (!enabled) this.endTalking(); this.speechFrames = 0; this.silentFrames = 0; this.preroll = []; this.update({ handsFree: enabled }); }
-  beginTalking = () => {
+  beginTalking = (answeringPresentationId?: string) => {
     if (!this.view.connected || !this.view.microphone || this.talking || this.ending || this.inputPendingEnd) return;
     this.interrupt('speech'); this.inputStream++; this.inputSeq = 0; this.talking = true; this.ending = false;
     this.inputReady = false; this.inputPending = []; this.inputPendingEnd = false;
     this.capture?.port.postMessage({ type: 'reset' });
-    this.send({ type: 'input.audio.start', streamId: this.inputStream }); this.update({ recording: true, partial: '', state: 'connecting' });
+    this.send({ type: 'input.audio.start', streamId: this.inputStream, answeringPresentationId }); this.update({ recording: true, partial: '', state: 'connecting' });
     this.inputReadyTimer = setTimeout(() => this.fail('Speech recognition did not become ready. Your microphone stopped; retry or type your question.'), 8000);
     this.utteranceTimer = setTimeout(() => this.endTalking(), 30000);
   };
@@ -175,11 +195,11 @@ export class VoiceRuntime {
     this.send({ type: 'input.interrupt', outputEpoch: this.epoch, reason });
     this.update({ state: 'interrupted', caption: '', highlightNodeIds: [], beatId: undefined });
   }
-  text(text: string, selectedNodeId?: string, selection?: SelectionContext) {
+  text(text: string, selectedNodeId?: string, selection?: SelectionContext, practiceResponse?: PracticeResponse) {
     if (!this.view.connected) return false;
     this.abandonInput(false);
     this.interrupt('typing'); this.select(selectedNodeId, selection);
-    const sent = this.send({ type: 'input.text', requestId: crypto.randomUUID(), text, selectedNodeId, selection });
+    const sent = this.send({ type: 'input.text', requestId: crypto.randomUUID(), text, selectedNodeId, selection, practiceResponse });
     if (sent) this.update({ state: 'thinking', partial: '', error: '' }); return sent;
   }
   repeat(messageId: string) { if (!this.view.connected) return; this.interrupt(); this.send({ type: 'input.repeat', messageId }); }
@@ -286,7 +306,7 @@ export class VoiceRuntime {
     this.streams.clear(); this.connectionId = undefined; this.finalizedAt = undefined;
     this.update({ state, connected: false, recording: false, microphone: false, handsFree: false, partial: '', caption: '', level: 0, highlightNodeIds: [], beatId: undefined });
   }
-  pauseForVisibility() { if (this.view.connected || this.view.state === 'connecting') { this.stop('paused'); this.update({ notice: 'Voice paused because this page was hidden. Reconnect when you’re ready.' }); } }
+  pauseForVisibility() { if (this.view.connected || ['connecting', 'reconnecting'].includes(this.view.state)) { this.stop('paused'); this.update({ notice: 'Voice paused because this page was hidden. Reconnect when you’re ready.' }); } }
   private fail(message: string) { this.stop('error'); this.update({ error: message }); }
 }
 function microphoneError(error: unknown) { if (error instanceof DOMException && error.name === 'NotAllowedError') return 'Microphone permission was denied. Enable it in browser settings to speak.'; if (error instanceof DOMException && error.name === 'NotFoundError') return 'No microphone was found.'; return error instanceof Error ? error.message : 'The microphone could not start.'; }

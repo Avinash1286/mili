@@ -29,15 +29,21 @@ export async function registerSources(app: FastifyInstance, context: ProductCont
   app.get('/v1/sources', async request => ({ sources: (await store.resources.list<Source>(await principal(request, store), 'source', { limit: 100 })).map(item => item.data) }));
   app.post('/v1/sources/uploads', async request => {
     const p = await principal(request, store), input = parse(UploadIntentSchema, request.body);
-    return store.locked(`owner:${p.ownerId}`, async () => {
+    const source = await store.locked(`owner:${p.ownerId}`, async () => {
       const existing = await store.resources.list<Source>(p, 'source', { limit: 100 });
       if (existing.length >= 30 || existing.reduce((sum, item) => sum + item.data.bytes, 0) + input.bytes > 100 * 1024 * 1024) throw new StoreError(429, 'SOURCE_LIMIT', 'Keep at most 30 sources and 100 MiB per learner. Delete unused uploads first.');
       const source: Source = { ...input, id: randomUUID(), status: 'awaiting-upload', revision: 0, createdAt: now(), updatedAt: now() };
       await store.resources.put(p, 'source', source.id, source, { expectedRevision: -1 });
-      const headers: Record<string, string> = { 'Content-Type': source.mimeType };
-      if (request.headers.authorization && !usesAccountCookie(request)) headers.Authorization = request.headers.authorization;
-      return { source, uploadUrl: `${env.API_PUBLIC_URL ?? 'http://localhost:4000'}/v1/sources/${source.id}/content`, headers };
+      return source;
     });
+    if (objects.createTransfer) { const transfer = await objects.createTransfer(p, { kind: 'source', id: source.id, operation: 'upload' }); return { source, uploadUrl: transfer.url, headers: transfer.headers, expiresAt: transfer.expiresAt }; }
+    const headers: Record<string, string> = { 'Content-Type': source.mimeType };
+    if (request.headers.authorization && !usesAccountCookie(request)) headers.Authorization = request.headers.authorization;
+    return { source, uploadUrl: `${env.API_PUBLIC_URL ?? 'http://localhost:4000'}/v1/sources/${source.id}/content`, headers };
+  });
+  app.post<{ Params: Params }>('/v1/sources/:id/download-ticket', async (request, reply) => {
+    const p = await principal(request, store); await store.resources.get(p, 'source', request.params.id);
+    return reply.header('Cache-Control', 'no-store').send({ transfer: objects.createTransfer ? await objects.createTransfer(p, { kind: 'source', id: request.params.id, operation: 'download' }) : null });
   });
   for (const operation of ['complete', 'retry'] as const) app.post<{ Params: Params }>(`/v1/sources/:id/${operation}`, async request => {
     const p = await principal(request, store), initial = await store.resources.get<Source>(p, 'source', request.params.id);

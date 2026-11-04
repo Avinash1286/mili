@@ -2,7 +2,7 @@ import { makeFunctionReference } from 'convex/server';
 import { internalMutation } from './_generated/server';
 import { v } from 'convex/values';
 
-const tables = ['owners', 'sessions', 'resources', 'jobs', 'events', 'receipts', 'chunks', 'authSessions', 'files', '_storage'] as const;
+const tables = ['owners', 'sessions', 'resources', 'jobs', 'events', 'receipts', 'chunks', 'authSessions', 'voiceTickets', 'transferTickets', 'usageDays', 'usageReservations', 'files', '_storage'] as const;
 const ownerFor = (ctx: any, id: string) => ctx.db.query('owners').withIndex('by_external_id', (q: any) => q.eq('id', id)).unique();
 const sessionFor = (ctx: any, id: string) => ctx.db.query('sessions').withIndex('by_external_id', (q: any) => q.eq('id', id)).unique();
 const resourceFor = (ctx: any, ownerId: string, kind: string, id: string) => ctx.db.query('resources').withIndex('by_key', (q: any) => q.eq('ownerId', ownerId).eq('kind', kind).eq('id', id)).unique();
@@ -13,6 +13,20 @@ export const sweep = internalMutation({ args: { table: v.optional(v.string()), c
   const now = Date.now(), database: any = table === '_storage' ? ctx.db.system : ctx.db;
   const page = await database.query(table).paginate({ numItems: 50, cursor: args.cursor ?? null });
   for (const row of page.page) {
+    if (table === 'usageDays') {
+      const ownerId = row.scope.startsWith('owner:') ? row.scope.slice(6) : row.scope.startsWith('session:') ? row.scope.slice(8).split('/')[0] : undefined;
+      const owner = ownerId ? await ownerFor(ctx, ownerId) : undefined;
+      const parentId = row.scope.startsWith('session:') ? row.scope.slice(8 + (ownerId?.length ?? 0) + 1) : undefined;
+      const parent = parentId ? await sessionFor(ctx, parentId) : undefined;
+      const expired = Date.parse(row.day) + (row.scope === 'global' ? 90 : 30) * 86400000 <= now;
+      if (expired || row.scope !== 'global' && dead(owner, now) || parentId !== undefined && (dead(parent, now) || parent.ownerId !== ownerId)) await ctx.db.delete(row._id);
+      continue;
+    }
+    if (['voiceTickets', 'transferTickets', 'usageReservations'].includes(table)) {
+      const owner = await ownerFor(ctx, row.ownerId);
+      if (dead(owner, now) || row.expiresAt + (table === 'usageReservations' ? 86400000 : 0) <= now) await ctx.db.delete(row._id);
+      continue;
+    }
     if (table === '_storage') {
       if (row._creationTime < now - 3600000 && !await ctx.db.query('files').withIndex('by_storage', q => q.eq('storageId', row._id)).first()) await ctx.storage.delete(row._id);
       continue;
@@ -56,7 +70,7 @@ export const sweep = internalMutation({ args: { table: v.optional(v.string()), c
     } else if (table === 'jobs') {
       const resource = row.resourceId ? await resourceFor(ctx, row.ownerId, row.resourceKind, row.resourceId) : undefined;
       if ((inaccessible || row.resourceId && dead(resource, now)) && ['pending', 'running'].includes(row.state)) {
-        if (row.scheduledId) await ctx.scheduler.cancel(row.scheduledId);
+        if (row.scheduledId) await ctx.scheduler.cancel(row.scheduledId).catch(() => undefined);
         await ctx.db.patch(row._id, { state: 'cancelled', code: 'RESOURCE_DELETED', fence: row.fence + 1, lockedUntil: undefined, workerId: undefined });
       }
     } else if (table === 'chunks') {

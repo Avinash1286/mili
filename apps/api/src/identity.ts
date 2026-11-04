@@ -2,14 +2,19 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { LearnerPreferencesSchema, IdentitySchema } from '@tokai/contracts';
-import { StoreError, type Store, type Principal } from '@tokai/db';
+import { ConvexNativeIdentity, StoreError, type Store, type Principal, type NativeIdentityProvider } from '@tokai/db';
+import { z } from 'zod';
 import { preferences } from './product-context.js';
 const sessionCookie = 'tokai_session', loginCookie = 'tokai_login';
 const cookieRequests = new WeakSet<FastifyRequest>();
 export const usesAccountCookie = (request: FastifyRequest) => cookieRequests.has(request);
 type Discovery = { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string };
 type LoginState = { verifier: string; nonce: string; expiresAt: number; original: Principal };
-export type IdentityOptions = { store: Store; env: Record<string, string | undefined>; closeOwner?: (ownerId: string) => Promise<void>; fetch?: typeof fetch; now?: () => number };
+export type IdentityOptions = { store: Store; env: Record<string, string | undefined>; closeOwner?: (ownerId: string) => Promise<void>; fetch?: typeof fetch; now?: () => number; nativeIdentity?: NativeIdentityProvider };
+type NativeSession = { subject: string; sessionId: string };
+export async function deleteNativeIdentity(principal: Principal, env: Record<string, string | undefined>) {
+  if (env.TOKAI_NATIVE_AUTH === '1') await new ConvexNativeIdentity(env).deleteAccount(principal);
+}
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 const equal = (a: string, b: string) => { const left = Buffer.from(a), right = Buffer.from(b); return left.length === right.length && timingSafeEqual(left, right); };
 function cookie(request: FastifyRequest, name: string) { const values = request.headers.cookie?.split(';').map(value => value.trim()).filter(value => value.startsWith(name + '=')); if (!values || values.length !== 1) return undefined; try { return decodeURIComponent(values[0]!.slice(name.length + 1)); } catch { return undefined; } }
@@ -20,6 +25,7 @@ export async function registerIdentity(app: FastifyInstance, options: IdentityOp
   const { store, env } = options, now = options.now ?? Date.now, requestFetch = options.fetch ?? fetch;
   const origin = env.APP_ORIGIN ?? 'http://localhost:3000', apiOrigin = env.API_ORIGIN ?? `http://localhost:${env.API_PORT ?? '4000'}`, secure = apiOrigin.startsWith('https:');
   const available = Boolean(env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.SESSION_SECRET && env.SESSION_SECRET.length >= 32);
+  const native = options.nativeIdentity ?? (env.TOKAI_NATIVE_AUTH === '1' ? new ConvexNativeIdentity(env) : undefined);
   let discoveryPromise: Promise<Discovery> | undefined;
   const endpoint = (value: string) => { const url = new URL(value); if (url.username || url.password || url.hash || !['http:', 'https:'].includes(url.protocol) || url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new StoreError(503, 'OIDC_CONFIGURATION', 'Sign-in requires a trusted identity server.'); return url; };
   async function discovery() {
@@ -37,7 +43,9 @@ export async function registerIdentity(app: FastifyInstance, options: IdentityOp
   app.addHook('onRequest', async (request, reply) => {
     const token = cookie(request, sessionCookie); if (!token) return;
     try {
-      await store.authenticate(token);
+      const principal = await store.authenticate(token);
+      const binding = await store.resources.get<NativeSession>(principal, 'native-session', principal.authSessionId).catch(error => { if (error instanceof StoreError && error.status === 404) return undefined; throw error; });
+      if (binding && (!native || !await native.active(binding.data))) { await store.revoke(principal); throw new StoreError(401, 'ACCOUNT_SESSION_EXPIRED', 'Sign in again.'); }
       // A completed account sign-in supersedes a stale guest bearer left in a tab.
       // Cookie authority still requires Origin even when a Bearer header is present.
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) requireOrigin(request);
@@ -49,9 +57,26 @@ export async function registerIdentity(app: FastifyInstance, options: IdentityOp
   app.get('/v1/me', async request => {
     let principal: Principal | undefined;
     if (request.headers.authorization) { try { principal = await requestPrincipal(request, store); } catch (error) { if (!(error instanceof StoreError && error.status === 401)) throw error; } }
-    if (!principal) return { identity: IdentitySchema.parse({ kind: 'anonymous', signInAvailable: available }), preferences: LearnerPreferencesSchema.parse({}), revision: -1 };
+    if (!principal) return { identity: IdentitySchema.parse({ kind: 'anonymous', signInAvailable: available || Boolean(native) }), preferences: LearnerPreferencesSchema.parse({}), revision: -1 };
     const record = await preferences(store, principal);
-    return { identity: IdentitySchema.parse({ kind: principal.kind, displayName: record.preferences.displayName || undefined, expiresAt: principal.expiresAt, signInAvailable: available }), ...record };
+    return { identity: IdentitySchema.parse({ kind: principal.kind, displayName: record.preferences.displayName || undefined, expiresAt: principal.expiresAt, signInAvailable: available || Boolean(native) }), ...record };
+  });
+  app.get('/auth/config', async () => ({ native: Boolean(native), oidc: available, passwordRecovery: false, emailVerification: false }));
+  app.post('/auth/native-session', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    requireOrigin(request); if (!native) throw new StoreError(503, 'NATIVE_AUTH_UNAVAILABLE', 'Account sign-in is not configured.');
+    const { token } = z.object({ token: z.string().min(20).max(20000) }).strict().parse(request.body);
+    const identity = await native.verify(token);
+    const original = request.headers.authorization ? await requestPrincipal(request, store) : undefined;
+    const user = await store.createUser({ issuer: 'urn:tokai:native-auth', subject: identity.subject, displayName: identity.displayName });
+    try {
+      if (original?.kind === 'guest') { await options.closeOwner?.(original.ownerId); await store.claimGuest(original, user.principal); }
+      await store.resources.put(user.principal, 'native-session', user.principal.authSessionId, { subject: identity.subject, sessionId: identity.sessionId }, { expectedRevision: -1 });
+      const record = await preferences(store, user.principal);
+      if (!record.preferences.displayName && identity.displayName) await store.resources.put(user.principal, 'preferences', user.principal.ownerId, { ...record.preferences, displayName: identity.displayName }, { expectedRevision: record.revision });
+      const saved = await preferences(store, user.principal);
+      setCookie(reply, sessionCookie, user.token, Math.max(0, Math.floor((Math.min(Date.parse(user.principal.expiresAt), identity.expiresAt) - now()) / 1000)), secure);
+      return { identity: IdentitySchema.parse({ kind: 'user', displayName: saved.preferences.displayName || undefined, expiresAt: user.principal.expiresAt, signInAvailable: true }), ...saved };
+    } catch (error) { await store.revoke(user.principal); throw error; }
   });
   app.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     requireOrigin(request); if (!available) throw new StoreError(503, 'OIDC_UNAVAILABLE', 'Account sign-in is not configured. Guest lessons remain available.');
@@ -88,7 +113,7 @@ export async function registerIdentity(app: FastifyInstance, options: IdentityOp
     } catch { throw new StoreError(400, 'OIDC_TOKEN_INVALID', 'The sign-in token could not be verified.'); }
     const displayName = typeof claims.name === 'string' ? claims.name.slice(0, 80) : typeof claims.preferred_username === 'string' ? claims.preferred_username.slice(0, 80) : '';
     const user = await store.createUser({ issuer: env.OIDC_ISSUER!, subject: claims.sub!, displayName });
-    if (state.original.kind === 'guest') { try { await store.claimGuest(state.original, user.principal); } catch (error) { await store.revoke(user.principal); throw error; } await options.closeOwner?.(state.original.ownerId); }
+    if (state.original.kind === 'guest') { try { await options.closeOwner?.(state.original.ownerId); await store.claimGuest(state.original, user.principal); } catch (error) { await store.revoke(user.principal); throw error; } }
     const record = await preferences(store, user.principal); if (!record.preferences.displayName && displayName) await store.resources.put(user.principal, 'preferences', user.principal.ownerId, { ...record.preferences, displayName }, { expectedRevision: record.revision });
     setCookie(reply, sessionCookie, user.token, Math.max(0, Math.floor((Date.parse(user.principal.expiresAt) - now()) / 1000)), secure);
     return reply.redirect(`${origin}/dashboard`);
