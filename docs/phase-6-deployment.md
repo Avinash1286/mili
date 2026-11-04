@@ -1,21 +1,23 @@
 # Phase 6 deployment runbook
 
-Updated 2026-11-04. **Cloud configuration exists; application deployment and Linux runtime verification are not yet complete.** Phase 6 must be committed and pushed, with the final local checks passing, before the website is published. The user authorized Vercel hosting and Convex cloud on existing free accounts. No paid plan, metered Starter upgrade, container registry, or GitHub Actions workflow is used.
+Updated 2026-11-04. Linux build-time OCR and embedding verification passes. Production runtime acceptance is tracked in `docs/progress.md`; a successful build alone does not establish a working deployment. The user authorized Vercel hosting and Convex cloud on existing free accounts. No paid plan, metered Starter upgrade, container registry, or GitHub Actions workflow is used.
 
 ## Configured destinations
 
 | Environment | Vercel origin | Convex deployment |
 | --- | --- | --- |
-| Production | `https://tokai-kappa.vercel.app` | `gen-ai-labs:tokai:release`, `https://glad-ladybug-203.convex.cloud` |
-| Preview | Planned stable alias `https://tokai-preview-avinash1286s-projects.vercel.app` — assign after its first build | `gen-ai-labs:tokai:staging`, `https://tame-scorpion-688.convex.cloud` |
+| Production | `https://milli-nine.vercel.app` | `gen-ai-labs:tokai:release`, `https://glad-ladybug-203.convex.cloud` |
+| Preview | No stable alias assigned on the replacement project | `gen-ai-labs:tokai:staging`, `https://tame-scorpion-688.convex.cloud` |
 
-Vercel project `tokai`, ID `prj_JNBE4NryhLwcx4q0EeTDo8Mp6Nbl`, belongs to `avinash1286s-projects`. CLI account metadata confirmed **Hobby**. Convex project `tokai` belongs to `gen-ai-labs`; the dashboard billing endpoint returned no subscription, the team is not suspended, and usage state is Default. This is the capped Free configuration; Starter permits paid overages and is not selected. [Convex limits](https://docs.convex.dev/production/state/limits).
+Vercel project `milli`, ID `prj_ZjQ0pBe5p2eLgXHn2FYOOBEetZCo`, belongs to `avinash1286s-projects`. It replaces the deleted Vercel project. CLI account metadata confirmed **Hobby**. The existing Convex project remains `tokai` under `gen-ai-labs` for data and configuration compatibility. The dashboard billing endpoint returned no subscription, the team is not suspended, and usage state is Default. This is the capped Free configuration; Starter permits paid overages and is not selected. [Convex limits](https://docs.convex.dev/production/state/limits).
 
 Both cloud databases are separate from the local anonymous Convex deployment. No local lessons, credentials, files or database backup were imported into cloud. Root `.env.local` and the local watcher remain pointed at local3210/3211.
 
 ## Runtime architecture
 
 `vercel.json` defines two Vercel Services: Next.js under `apps/web` and a Node24 Fastify service with entrypoint `apps/api/src/server.ts`. `/v1/*`, `/auth/*`, `/health/*` and `/internal/*` route to Fastify; `/api/auth/*` remains with the Next.js Better Auth proxy. Application cookies and voice upgrades use the same public origin. Convex owns application snapshots/resources, private files, vectors, admission meters, coordination and durable scheduled jobs. Native OCR/embedding executes through the fixed authenticated Fastify job callback.
+
+The final service catchall must use `/(.*)` so it includes `/`. Vercel's Node loader intercepts `listen()` while importing the server module; the entrypoint must not await listening at module scope. Keep listener failure handling, and test the public root, API readiness, account bridge and WebSocket path after deployment. Set Vercel and Convex application/callback origins to the same canonical production domain, including the strict voice Origin check.
 
 Current Vercel documentation explicitly supports WebSockets in Node Functions, including a GA announcement dated October20,2026. This is **bounded connection hosting**, not an always-on daemon guarantee. Hobby functions have a300second ceiling; milli drains around240seconds and closes by270seconds with code1012, then requests a new one-use ticket and authoritative snapshot. [WebSockets](https://vercel.com/docs/functions/websockets), [GA announcement](https://vercel.com/changelog/websocket-support-is-now-generally-available), [Fastify](https://vercel.com/docs/frameworks/backend/fastify).
 

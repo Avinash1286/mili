@@ -13,8 +13,11 @@ if (production) for (const name of ['CONVEX_URL', 'APP_ORIGIN', 'API_ORIGIN'] as
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT or API_PORT must be a valid port number.');
 const app = await createApp();
-await app.listen({ port, host: production ? '0.0.0.0' : '127.0.0.1' });
-console.info(`milli API ready on port ${port}`);
+// Vercel captures listen() while importing this module, then starts the real
+// listener after import completes. Awaiting it here deadlocks initialization.
+void app.listen({ port, host: production ? '0.0.0.0' : '127.0.0.1' })
+  .then(() => console.info(`milli API ready on port ${port}`))
+  .catch(error => { console.error('milli API failed to start:', error); process.exit(1); });
 let closing = false;
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
   if (closing) return; closing = true;

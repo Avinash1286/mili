@@ -26,6 +26,6 @@
     { "source": "/auth/:path*", "destination": { "service": "api" } },
     { "source": "/health/:path*", "destination": { "service": "api" } },
     { "source": "/internal/:path*", "destination": { "service": "api" } },
-    { "source": "/:path*", "destination": { "service": "web" } }
+    { "source": "/(.*)", "destination": { "service": "web" } }
   ]
 }

@@ -19,3 +19,5 @@ apps/web/public/vendor/mediapipe/gesture_recognizer.task
 .convex/
 .vercel/
 .tokai-runtime/
+.vercel
+.env*
