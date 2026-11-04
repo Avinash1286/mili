@@ -9,7 +9,6 @@
     "api": {
       "root": ".",
       "framework": "fastify",
-      "runtime": "nodejs24.x",
       "entrypoint": "apps/api/src/server.ts",
       "buildCommand": "pnpm exec tsx infra/deploy/build-api.ts",
       "functions": {
